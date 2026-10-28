@@ -1,0 +1,18 @@
+{
+  "name": "VeriDoc AI — Intelligent Document Verification",
+  "short_name": "VeriDoc AI",
+  "description": "Enterprise-grade autonomous document verification, OCR, and deterministic compliance engine.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F8FAFC",
+  "theme_color": "#14213D",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
