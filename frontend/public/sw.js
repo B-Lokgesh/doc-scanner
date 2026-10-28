@@ -1,9 +1,13 @@
-const CACHE_NAME = 'veridoc-ai-cache-v1';
+const CACHE_NAME = 'veridoc-ai-cache-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/favicon.svg',
+  '/logo.png',
+  '/pwa-192x192.png',
+  '/pwa-512x512.png',
+  '/favicon-32x32.png',
+  '/apple-touch-icon.png',
 ];
 
 // Install event: cache static assets

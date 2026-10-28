@@ -10,9 +10,11 @@ export const Footer: React.FC = () => {
           {/* Brand Col */}
           <div className="md:col-span-2 space-y-3">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-md bg-[#14213D] flex items-center justify-center text-white">
-                <ShieldCheck className="w-4 h-4 text-blue-400" />
-              </div>
+              <img
+                src="/pwa-192x192.png"
+                alt="VeriDoc AI Logo"
+                className="w-8 h-8 rounded-lg object-contain"
+              />
               <span className="font-bold text-base text-[#14213D]">
                 VeriDoc <span className="text-[#2563EB]">AI</span>
               </span>
