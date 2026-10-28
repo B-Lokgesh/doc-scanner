@@ -2,16 +2,26 @@ import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-STORAGE_DIR = BASE_DIR / "storage"
+
+# On Vercel / serverless environments, only /tmp is writable
+is_serverless = os.getenv("VERCEL") == "1" or not os.access(BASE_DIR, os.W_OK)
+if is_serverless:
+    STORAGE_DIR = Path("/tmp/storage")
+    DATABASE_PATH = Path("/tmp/veridoc.db")
+else:
+    STORAGE_DIR = BASE_DIR / "storage"
+    DATABASE_PATH = BASE_DIR / "veridoc.db"
+
 UPLOAD_DIR = STORAGE_DIR / "uploads"
 REPORT_DIR = STORAGE_DIR / "reports"
 PREVIEW_DIR = STORAGE_DIR / "previews"
 FIXTURES_DIR = BASE_DIR / "test_fixtures"
-DATABASE_PATH = BASE_DIR / "veridoc.db"
 
 # Ensure directories exist
-for folder in [STORAGE_DIR, UPLOAD_DIR, REPORT_DIR, PREVIEW_DIR, FIXTURES_DIR]:
+for folder in [STORAGE_DIR, UPLOAD_DIR, REPORT_DIR, PREVIEW_DIR]:
     folder.mkdir(parents=True, exist_ok=True)
+if FIXTURES_DIR.exists():
+    FIXTURES_DIR.mkdir(parents=True, exist_ok=True)
 
 class Settings:
     PROJECT_NAME: str = "VeriDoc AI"
