@@ -3,8 +3,13 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-# On Vercel / serverless environments, only /tmp is writable
-is_serverless = os.getenv("VERCEL") == "1" or not os.access(BASE_DIR, os.W_OK)
+# Detect serverless environment reliably (Vercel, AWS Lambda, or read-only filesystem)
+is_serverless = (
+    os.getenv("VERCEL") is not None
+    or os.getenv("VERCEL_ENV") is not None
+    or not os.access(str(BASE_DIR), os.W_OK)
+)
+
 if is_serverless:
     STORAGE_DIR = Path("/tmp/storage")
     DATABASE_PATH = Path("/tmp/veridoc.db")
@@ -17,11 +22,12 @@ REPORT_DIR = STORAGE_DIR / "reports"
 PREVIEW_DIR = STORAGE_DIR / "previews"
 FIXTURES_DIR = BASE_DIR / "test_fixtures"
 
-# Ensure directories exist
+# Ensure directories exist safely without throwing on read-only filesystems
 for folder in [STORAGE_DIR, UPLOAD_DIR, REPORT_DIR, PREVIEW_DIR]:
-    folder.mkdir(parents=True, exist_ok=True)
-if FIXTURES_DIR.exists():
-    FIXTURES_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
 
 class Settings:
     PROJECT_NAME: str = "VeriDoc AI"

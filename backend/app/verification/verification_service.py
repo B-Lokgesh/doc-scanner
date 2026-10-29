@@ -216,54 +216,57 @@ class VerificationService:
         """
         completed_at = datetime.now()
 
-        with db_session() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-            INSERT INTO verification_records (
-                reference_id, document_type, original_filename, file_hash, file_path,
-                file_size, mime_type, processing_status, final_status, summary,
-                error_code, created_at, completed_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                ref_id, doc_type, filename, file_hash, file_path,
-                file_size, mime_type, "completed", final_status, summary,
-                error_code, created_at.isoformat(), completed_at.isoformat()
-            ))
-            ver_id = cursor.lastrowid
-
-            # Save checks
-            for c in checks:
+        try:
+            with db_session() as conn:
+                cursor = conn.cursor()
                 cursor.execute("""
-                INSERT INTO verification_checks (
-                    verification_id, check_name, result, severity, explanation, evidence_reference
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO verification_records (
+                    reference_id, document_type, original_filename, file_hash, file_path,
+                    file_size, mime_type, processing_status, final_status, summary,
+                    error_code, created_at, completed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
-                    ver_id, c["check_name"], c["result"], c["severity"],
-                    c["explanation"], c.get("evidence_reference")
+                    ref_id, doc_type, filename, file_hash, file_path,
+                    file_size, mime_type, "completed", final_status, summary,
+                    error_code, created_at.isoformat(), completed_at.isoformat()
                 ))
+                ver_id = cursor.lastrowid
 
-            # Save fields
-            for f in fields:
-                cursor.execute("""
-                INSERT INTO extracted_fields (
-                    verification_id, field_name, normalized_value, raw_value,
-                    extraction_confidence, is_sensitive
-                ) VALUES (?, ?, ?, ?, ?, ?)
-                """, (
-                    ver_id, f["field_name"], f.get("normalized_value"), f.get("raw_value"),
-                    f.get("extraction_confidence", 1.0), 1 if f.get("is_sensitive") else 0
-                ))
+                # Save checks
+                for c in checks:
+                    cursor.execute("""
+                    INSERT INTO verification_checks (
+                        verification_id, check_name, result, severity, explanation, evidence_reference
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """, (
+                        ver_id, c["check_name"], c["result"], c["severity"],
+                        c["explanation"], c.get("evidence_reference")
+                    ))
 
-            # Save events
-            for e in events:
-                cursor.execute("""
-                INSERT INTO processing_events (
-                    verification_id, stage, event_status, message, created_at
-                ) VALUES (?, ?, ?, ?, ?)
-                """, (
-                    ver_id, e["stage"], e["event_status"], e.get("message"),
-                    e["created_at"].isoformat() if isinstance(e["created_at"], datetime) else str(e["created_at"])
-                ))
+                # Save fields
+                for f in fields:
+                    cursor.execute("""
+                    INSERT INTO extracted_fields (
+                        verification_id, field_name, normalized_value, raw_value,
+                        extraction_confidence, is_sensitive
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """, (
+                        ver_id, f["field_name"], f.get("normalized_value"), f.get("raw_value"),
+                        f.get("extraction_confidence", 1.0), 1 if f.get("is_sensitive") else 0
+                    ))
+
+                # Save events
+                for e in events:
+                    cursor.execute("""
+                    INSERT INTO processing_events (
+                        verification_id, stage, event_status, message, created_at
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """, (
+                        ver_id, e["stage"], e["event_status"], e.get("message"),
+                        e["created_at"].isoformat() if isinstance(e["created_at"], datetime) else str(e["created_at"])
+                    ))
+        except Exception as db_err:
+            print("Database persistence warning:", db_err)
 
         passed = sum(1 for c in checks if c["result"] == "PASSED")
         failed = sum(1 for c in checks if c["result"] == "FAILED")

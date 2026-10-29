@@ -150,8 +150,17 @@ async def create_verification(
     file_ext = Path(filename).suffix.lower()
     temp_filename = f"upload_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}{file_ext}"
     saved_path = UPLOAD_DIR / temp_filename
-    with open(saved_path, "wb") as f:
-        f.write(file_bytes)
+    try:
+        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        with open(saved_path, "wb") as f:
+            f.write(file_bytes)
+    except Exception:
+        try:
+            saved_path = Path("/tmp") / temp_filename
+            with open(saved_path, "wb") as f:
+                f.write(file_bytes)
+        except Exception:
+            saved_path = Path(f"/tmp/{temp_filename}")
 
     # Run complete verification engine
     result = VerificationService.run_verification(

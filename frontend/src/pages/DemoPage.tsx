@@ -32,7 +32,10 @@ export const DemoPage: React.FC = () => {
     setRunningSampleId(sampleId);
     try {
       const res = await verifyDemoSample(sampleId);
-      navigate(`/results/${res.reference_id}`);
+      try {
+        sessionStorage.setItem(`veridoc_${res.reference_id}`, JSON.stringify(res));
+      } catch (_) {}
+      navigate(`/results/${res.reference_id}`, { state: { result: res } });
     } catch (err: any) {
       alert(err.message || 'Failed to verify sample');
       setRunningSampleId(null);

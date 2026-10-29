@@ -6,7 +6,10 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from pypdf import PdfReader
 from PIL import Image
-import numpy as np
+try:
+    import numpy as np
+except Exception:
+    np = None
 
 try:
     import pytesseract
@@ -67,11 +70,11 @@ class OCRService:
         }
 
     @classmethod
-    def preprocess_image(cls, file_bytes: bytes) -> Optional[np.ndarray]:
+    def preprocess_image(cls, file_bytes: bytes) -> Optional[Any]:
         """
         Applies grayscale, contrast stretching and thresholding for OCR.
         """
-        if cv2 is None:
+        if cv2 is None or np is None:
             return None
         try:
             nparr = np.frombuffer(file_bytes, np.uint8)

@@ -132,7 +132,10 @@ export const UploadPage: React.FC = () => {
     try {
       const result = await uploadAndVerifyDocument(selectedFile, typeParam);
       clearInterval(interval);
-      navigate(`/results/${result.reference_id}`);
+      try {
+        sessionStorage.setItem(`veridoc_${result.reference_id}`, JSON.stringify(result));
+      } catch (_) {}
+      navigate(`/results/${result.reference_id}`, { state: { result } });
     } catch (err: any) {
       clearInterval(interval);
       setIsProcessing(false);

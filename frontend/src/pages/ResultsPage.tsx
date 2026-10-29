@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useLocation } from 'react-router-dom';
 import {
   ShieldCheck,
   Download,
@@ -24,22 +24,49 @@ import { FilePreviewModal } from '../components/FilePreviewModal';
 
 export const ResultsPage: React.FC = () => {
   const { refId } = useParams<{ refId: string }>();
-  const [result, setResult] = useState<VerificationResult | null>(null);
-  const [loading, setLoading] = useState(true);
+  const location = useLocation();
+
+  // 1. Check router state (passed directly on navigation)
+  // 2. Check sessionStorage (persists across page reloads in this browser tab)
+  const getInitialResult = (): VerificationResult | null => {
+    const fromState = (location.state as { result?: VerificationResult } | null)?.result;
+    if (fromState) return fromState;
+    if (refId) {
+      try {
+        const cached = sessionStorage.getItem(`veridoc_${refId}`);
+        if (cached) return JSON.parse(cached);
+      } catch (_) {}
+    }
+    return null;
+  };
+
+  const initialResult = getInitialResult();
+  const [result, setResult] = useState<VerificationResult | null>(initialResult);
+  const [loading, setLoading] = useState(!initialResult);
   const [error, setError] = useState<string | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   useEffect(() => {
+    if (result) {
+      try {
+        sessionStorage.setItem(`veridoc_${result.reference_id}`, JSON.stringify(result));
+      } catch (_) {}
+      return;
+    }
     if (!refId) return;
+
     setLoading(true);
     fetchVerificationResult(refId)
       .then((data) => {
         setResult(data);
         setError(null);
+        try {
+          sessionStorage.setItem(`veridoc_${refId}`, JSON.stringify(data));
+        } catch (_) {}
       })
       .catch((err) => setError(err.message || 'Failed to load verification findings'))
       .finally(() => setLoading(false));
-  }, [refId]);
+  }, [refId, result]);
 
   if (loading) {
     return (
