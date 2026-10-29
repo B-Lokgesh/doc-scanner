@@ -4,6 +4,7 @@ import {
   DashboardStats,
   HistoryItem,
   DemoSample,
+  CrossVerifyResult,
 } from '../types';
 
 const API_BASE = '/api';
@@ -110,4 +111,28 @@ export function getReportDownloadUrl(referenceId: string): string {
 
 export function getDocumentPreviewUrl(referenceId: string): string {
   return `${API_BASE}/documents/${referenceId}/preview`;
+}
+
+export async function crossVerifyDocument(
+  referenceId: string,
+  file: File,
+  documentType: string,
+  primaryFields: any[]
+): Promise<CrossVerifyResult> {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('document_type', documentType);
+  formData.append('primary_fields_json', JSON.stringify(primaryFields || []));
+
+  const res = await fetch(`${API_BASE}/verifications/${referenceId}/cross-verify`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Supporting document cross-verification failed');
+  }
+
+  return res.json();
 }

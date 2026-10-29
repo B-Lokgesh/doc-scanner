@@ -1,6 +1,18 @@
 import re
 from typing import Dict, Any, List, Tuple
 
+DOCUMENT_DISPLAY_NAMES = {
+    "pan": "PAN Card",
+    "aadhaar": "Aadhaar Card",
+    "passport": "Passport",
+    "driving_licence": "Driving Licence",
+    "voter_id": "Voter ID",
+    "educational_certificate": "Educational Certificate",
+    "bank_statement": "Bank Statement",
+    "income_certificate": "Income Certificate",
+    "other": "Other Document"
+}
+
 class DocumentClassifier:
     CATEGORY_INDICATORS = {
         "pan": {
@@ -100,17 +112,22 @@ class DocumentClassifier:
                 "is_mismatch": False,
                 "is_ambiguous": False,
                 "detected_category": selected_type,
+                "suggested_type": None,
+                "suggested_type_name": None,
                 "confidence": min(0.95, 0.6 + (selected_score * 0.1)),
                 "checks": checks
             }
 
         # Case 2: Content strongly matches ANOTHER category (Mismatch!)
-        if best_score >= min_required and best_detected_cat != selected_type and selected_score == 0:
+        # Trigger if selected score is low AND another category scores higher
+        if best_score >= min_required and best_detected_cat != selected_type and selected_score < min_required:
+            detected_name = DOCUMENT_DISPLAY_NAMES.get(best_detected_cat, best_detected_cat.replace('_', ' ').title())
+            selected_name = DOCUMENT_DISPLAY_NAMES.get(selected_type, selected_type.replace('_', ' ').title())
             checks.append({
                 "check_name": "Document Category Consistency",
                 "result": "FAILED",
                 "severity": "CRITICAL",
-                "explanation": f"Category mismatch detected! Selected '{selected_type.replace('_', ' ').title()}', but document content strongly indicates '{best_detected_cat.replace('_', ' ').title()}'.",
+                "explanation": f"Wrong document type uploaded! This appears to be a {detected_name}, not a {selected_name}. Please upload a valid {selected_name} to proceed.",
                 "evidence_reference": f"Expected: {selected_type}, Detected: {best_detected_cat} (score: {best_score})"
             })
             return {
@@ -118,6 +135,8 @@ class DocumentClassifier:
                 "is_mismatch": True,
                 "is_ambiguous": False,
                 "detected_category": best_detected_cat,
+                "suggested_type": best_detected_cat,
+                "suggested_type_name": detected_name,
                 "confidence": 0.85,
                 "checks": checks
             }
@@ -135,6 +154,8 @@ class DocumentClassifier:
             "is_mismatch": False,
             "is_ambiguous": True,
             "detected_category": "ambiguous",
+            "suggested_type": None,
+            "suggested_type_name": None,
             "confidence": 0.4,
             "checks": checks
         }

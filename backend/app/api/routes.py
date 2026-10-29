@@ -219,6 +219,17 @@ def get_verification_by_ref(reference_id: str):
     else:
         recommendations.append("Request a higher-resolution scan or supported uncorrupted document file.")
 
+    suggested_type = None
+    suggested_type_name = None
+    for c in checks:
+        if c.get("check_name") == "document_type_mismatch" and c.get("result") == "FAILED":
+            ev = c.get("evidence_reference", "")
+            if "detected=" in ev:
+                suggested_type = ev.split("detected=")[-1].strip()
+                cat_match = next((d for d in DOCUMENT_TYPES_CATALOG if d["id"] == suggested_type), None)
+                if cat_match:
+                    suggested_type_name = cat_match["name"]
+
     return {
         "reference_id": rec["reference_id"],
         "document_type": rec["document_type"],
@@ -236,7 +247,9 @@ def get_verification_by_ref(reference_id: str):
         "passed_checks_count": passed,
         "failed_checks_count": failed,
         "warning_checks_count": warnings,
-        "recommended_next_steps": recommendations
+        "recommended_next_steps": recommendations,
+        "suggested_type": suggested_type,
+        "suggested_type_name": suggested_type_name
     }
 
 @router.get("/verifications/{reference_id}/report")
@@ -253,6 +266,160 @@ def download_verification_report(reference_id: str):
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+@router.post("/verifications/{reference_id}/cross-verify")
+async def cross_verify_supporting_document(
+    reference_id: str,
+    file: UploadFile = File(...),
+    document_type: str = Form(...),
+    primary_fields_json: str = Form(default="[]")
+):
+    """
+    Verifies a secondary supporting document and cross-matches extracted identity fields (Name, DOB, etc.)
+    with the primary document to detect identity impersonation or mismatched credentials.
+    """
+    import json as json_lib
+
+    valid_doc_types = {d["id"] for d in DOCUMENT_TYPES_CATALOG}
+    if document_type not in valid_doc_types:
+        raise HTTPException(status_code=400, detail=f"Invalid document type '{document_type}'.")
+
+    file_bytes = await file.read()
+    filename = file.filename or "supporting_document"
+    declared_mime = file.content_type or "application/octet-stream"
+
+    file_ext = Path(filename).suffix.lower()
+    temp_filename = f"support_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}{file_ext}"
+    saved_path = UPLOAD_DIR / temp_filename
+    try:
+        with open(saved_path, "wb") as f:
+            f.write(file_bytes)
+    except Exception:
+        pass
+
+    # Run verification on supporting document
+    result = VerificationService.run_verification(
+        file_bytes=file_bytes,
+        original_filename=filename,
+        declared_mime=declared_mime,
+        selected_type=document_type,
+        saved_file_path=str(saved_path)
+    )
+
+    # Parse primary fields (passed directly from client to work with zero-DB serverless Vercel)
+    try:
+        primary_fields = json_lib.loads(primary_fields_json)
+    except Exception:
+        primary_fields = []
+
+    # Map field names
+    def normalize_val(val: Optional[str]) -> str:
+        if not val:
+            return ""
+        return " ".join(str(val).strip().upper().split())
+
+    primary_map: Dict[str, str] = {}
+    for f in primary_fields:
+        fname = f.get("field_name", "").lower()
+        val = normalize_val(f.get("normalized_value") or f.get("raw_value"))
+        if val:
+            primary_map[fname] = val
+
+    supporting_map: Dict[str, str] = {}
+    for f in result.get("extracted_fields", []):
+        fname = f.get("field_name", "").lower()
+        val = normalize_val(f.get("normalized_value") or f.get("raw_value"))
+        if val:
+            supporting_map[fname] = val
+
+    # Comparable attributes: label, primary candidates, supporting candidates
+    COMPARISON_TARGETS = [
+        {
+            "id": "name",
+            "label": "Full Name / Holder Name",
+            "p_keys": ["name", "full_name", "holder_name", "applicant_name", "candidate_name"],
+            "s_keys": ["name", "full_name", "holder_name", "applicant_name", "candidate_name"]
+        },
+        {
+            "id": "dob",
+            "label": "Date of Birth",
+            "p_keys": ["dob", "date_of_birth", "birth_date"],
+            "s_keys": ["dob", "date_of_birth", "birth_date"]
+        },
+        {
+            "id": "gender",
+            "label": "Gender",
+            "p_keys": ["gender", "sex"],
+            "s_keys": ["gender", "sex"]
+        },
+        {
+            "id": "address",
+            "label": "Pin Code / Region",
+            "p_keys": ["pin_code", "pincode", "postal_code", "zip_code"],
+            "s_keys": ["pin_code", "pincode", "postal_code", "zip_code"]
+        }
+    ]
+
+    comparisons = []
+    for target in COMPARISON_TARGETS:
+        pval = next((primary_map[k] for k in target["p_keys"] if k in primary_map), "")
+        sval = next((supporting_map[k] for k in target["s_keys"] if k in supporting_map), "")
+
+        if pval or sval:
+            # Fuzzy/partial match check for names (initials, substrings)
+            is_match = False
+            if pval and sval:
+                if pval == sval:
+                    is_match = True
+                elif target["id"] == "name":
+                    # Check if tokens overlap significantly (e.g. "RAJESH KUMAR SHARMA" vs "RAJESH SHARMA")
+                    p_tokens = set(pval.split())
+                    s_tokens = set(sval.split())
+                    if len(p_tokens.intersection(s_tokens)) >= 1 and min(len(p_tokens), len(s_tokens)) > 0:
+                        is_match = True
+                elif target["id"] == "dob":
+                    # Clean punctuation
+                    p_clean = "".join(c for c in pval if c.isalnum())
+                    s_clean = "".join(c for c in sval if c.isalnum())
+                    is_match = bool(p_clean and s_clean and (p_clean == s_clean or p_clean in s_clean or s_clean in p_clean))
+
+            comparisons.append({
+                "field": target["id"],
+                "label": target["label"],
+                "primary_value": pval or "Not Detected",
+                "supporting_value": sval or "Not Detected",
+                "match": is_match,
+                "both_present": bool(pval and sval)
+            })
+
+    both_present_count = sum(1 for c in comparisons if c["both_present"])
+    matched_count = sum(1 for c in comparisons if c["both_present"] and c["match"])
+    has_mismatch = any(c["both_present"] and not c["match"] for c in comparisons)
+
+    if both_present_count > 0 and not has_mismatch and matched_count > 0:
+        overall_status = "IDENTITY_CONFIRMED"
+        overall_match = True
+        summary_msg = f"Identity successfully cross-verified across documents ({matched_count}/{both_present_count} key fields matched)."
+    elif has_mismatch:
+        overall_status = "IDENTITY_MISMATCH"
+        overall_match = False
+        summary_msg = "Discrepancy detected between primary document and supporting document fields. Potential identity impersonation."
+    else:
+        overall_status = "INSUFFICIENT_DATA"
+        overall_match = False
+        summary_msg = "Insufficient common extractable fields found to conclusively cross-verify identity."
+
+    return {
+        "reference_id": reference_id,
+        "supporting_document_type": document_type,
+        "supporting_verification": result,
+        "field_comparison": comparisons,
+        "matched_fields": matched_count,
+        "total_comparable_fields": both_present_count,
+        "overall_identity_match": overall_match,
+        "cross_verify_status": overall_status,
+        "cross_verify_summary": summary_msg
+    }
 
 @router.get("/documents/{reference_id}/preview")
 def get_document_preview(reference_id: str):

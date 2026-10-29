@@ -15,10 +15,12 @@ import {
 } from 'lucide-react';
 import { fetchDocumentTypes, uploadAndVerifyDocument } from '../services/api';
 import { DocumentTypeItem } from '../types';
+import { useToast } from '../components/Toast';
 
 export const UploadPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const toast = useToast();
   const typeParam = searchParams.get('type') || 'pan';
 
   const [docTypes, setDocTypes] = useState<DocumentTypeItem[]>([]);
@@ -60,12 +62,16 @@ export const UploadPage: React.FC = () => {
 
     // 1. Check size limit
     if (file.size === 0) {
-      setErrorMsg('The selected file is 0 bytes (empty file). Please choose a valid file.');
+      const msg = 'The selected file is 0 bytes (empty file). Please choose a valid file.';
+      setErrorMsg(msg);
+      toast.error(msg);
       return;
     }
     const maxBytes = 10 * 1024 * 1024;
     if (file.size > maxBytes) {
-      setErrorMsg(`File size (${(file.size / (1024 * 1024)).toFixed(1)}MB) exceeds the 10MB limit.`);
+      const msg = `File size (${(file.size / (1024 * 1024)).toFixed(1)}MB) exceeds the 10MB limit.`;
+      setErrorMsg(msg);
+      toast.error(msg);
       return;
     }
 
@@ -73,11 +79,14 @@ export const UploadPage: React.FC = () => {
     const ext = file.name.split('.').pop()?.toLowerCase();
     const allowed = ['pdf', 'jpg', 'jpeg', 'png'];
     if (!ext || !allowed.includes(ext)) {
-      setErrorMsg(`Unsupported file type (.${ext}). Accepted formats: PDF, JPG, JPEG, PNG.`);
+      const msg = `Unsupported file type (.${ext}). Accepted formats: PDF, JPG, JPEG, PNG.`;
+      setErrorMsg(msg);
+      toast.error(msg);
       return;
     }
 
     setSelectedFile(file);
+    toast.info(`Selected "${file.name}" for analysis`);
 
     // Create preview url if image
     if (file.type.startsWith('image/')) {
@@ -113,6 +122,7 @@ export const UploadPage: React.FC = () => {
     }
     setErrorMsg(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
+    toast.info('File cleared');
   };
 
   const handleStartVerification = async () => {
@@ -139,7 +149,9 @@ export const UploadPage: React.FC = () => {
     } catch (err: any) {
       clearInterval(interval);
       setIsProcessing(false);
-      setErrorMsg(err.message || 'Verification failed during backend execution.');
+      const msg = err.message || 'Verification failed during backend execution.';
+      setErrorMsg(msg);
+      toast.error(msg, 'Upload Failed');
     }
   };
 

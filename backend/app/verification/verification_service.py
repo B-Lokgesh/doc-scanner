@@ -152,7 +152,7 @@ class VerificationService:
         # Stage 7: Manipulation indicators assessment
         add_event("manipulation_analysis", "IN_PROGRESS", "Assessing forensic and metadata indicators.")
         manipulation_checks = ManipulationAnalyzer.analyze_forensics(
-            file_bytes, val_res["detected_type"], ocr_res.get("metadata", {}), raw_text
+            file_bytes, val_res["detected_type"], ocr_res.get("metadata", {}), raw_text, selected_type
         )
         all_checks.extend(manipulation_checks)
         add_event("manipulation_analysis", "COMPLETED", "Forensic analysis complete.")
@@ -190,7 +190,10 @@ class VerificationService:
             created_at=created_at,
             checks=all_checks,
             fields=extracted_fields,
-            events=events
+            events=events,
+            suggested_type=class_res.get("suggested_type"),
+            suggested_type_name=class_res.get("suggested_type_name"),
+            detected_category=class_res.get("detected_category", "")
         )
 
     @classmethod
@@ -209,7 +212,10 @@ class VerificationService:
         created_at: datetime,
         checks: List[Dict[str, Any]],
         fields: List[Dict[str, Any]],
-        events: List[Dict[str, Any]]
+        events: List[Dict[str, Any]],
+        suggested_type: Optional[str] = None,
+        suggested_type_name: Optional[str] = None,
+        detected_category: str = ""
     ) -> Dict[str, Any]:
         """
         Persists verification record, checks, extracted fields, and processing events into SQLite.
@@ -302,5 +308,8 @@ class VerificationService:
             "passed_checks_count": passed,
             "failed_checks_count": failed,
             "warning_checks_count": warnings,
-            "recommended_next_steps": recommendations
+            "recommended_next_steps": recommendations,
+            "suggested_type": suggested_type,
+            "suggested_type_name": suggested_type_name,
+            "detected_category": detected_category
         }

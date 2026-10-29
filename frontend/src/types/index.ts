@@ -71,6 +71,30 @@ export interface VerificationResult {
   failed_checks_count: number;
   warning_checks_count: number;
   recommended_next_steps: string[];
+  suggested_type?: string | null;
+  suggested_type_name?: string | null;
+  detected_category?: string;
+}
+
+export interface FieldComparison {
+  field: string;
+  label: string;
+  primary_value: string;
+  supporting_value: string;
+  match: boolean;
+  both_present: boolean;
+}
+
+export interface CrossVerifyResult {
+  reference_id: string;
+  supporting_document_type: string;
+  supporting_verification: VerificationResult;
+  field_comparison: FieldComparison[];
+  matched_fields: number;
+  total_comparable_fields: number;
+  overall_identity_match: boolean;
+  cross_verify_status: 'IDENTITY_CONFIRMED' | 'IDENTITY_MISMATCH' | 'INSUFFICIENT_DATA';
+  cross_verify_summary: string;
 }
 
 export interface HistoryItem {

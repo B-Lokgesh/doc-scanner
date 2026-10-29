@@ -258,3 +258,43 @@ def test_49_dashboard_stats_and_history():
 def test_50_non_existent_record_returns_404():
     resp = client.get("/api/verifications/VD-99999999-NONEXISTENT")
     assert resp.status_code == 404
+
+def test_51_pan_uploaded_as_aadhaar_suggests_pan():
+    with open(FIXTURES_DIR / "valid_pan.pdf", "rb") as f:
+        file_bytes = f.read()
+
+    res = VerificationService.run_verification(
+        file_bytes=file_bytes,
+        original_filename="valid_pan.pdf",
+        declared_mime="application/pdf",
+        selected_type="aadhaar",
+        saved_file_path=str(FIXTURES_DIR / "valid_pan.pdf")
+    )
+    assert res["final_status"] == "INVALID"
+    assert res["suggested_type"] == "pan"
+    assert "PAN" in res["suggested_type_name"]
+
+def test_52_cross_verify_supporting_document():
+    import json
+    with open(FIXTURES_DIR / "valid_pan.pdf", "rb") as f:
+        pan_bytes = f.read()
+
+    primary_fields = [
+        {"field_name": "name", "normalized_value": "RAJESH KUMAR SHARMA", "raw_value": "RAJESH KUMAR SHARMA"},
+        {"field_name": "dob", "normalized_value": "1985-05-15", "raw_value": "15/05/1985"}
+    ]
+
+    resp = client.post(
+        "/api/verifications/VD-TEST-REF/cross-verify",
+        data={
+            "document_type": "pan",
+            "primary_fields_json": json.dumps(primary_fields)
+        },
+        files={"file": ("supporting_pan.pdf", pan_bytes, "application/pdf")}
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "field_comparison" in data
+    assert data["supporting_document_type"] == "pan"
+    assert "cross_verify_status" in data
+
