@@ -298,3 +298,31 @@ def test_52_cross_verify_supporting_document():
     assert data["supporting_document_type"] == "pan"
     assert "cross_verify_status" in data
 
+def test_53_cross_verify_name_and_dob_variants():
+    import json
+    with open(FIXTURES_DIR / "valid_pan.pdf", "rb") as f:
+        pan_bytes = f.read()
+
+    # Primary fields with matching identity (Rahul Sharma, 15/08/1990)
+    primary_fields = [
+        {"field_name": "holder_name", "normalized_value": "Rahul Sharma", "raw_value": "Rahul Sharma"},
+        {"field_name": "date_of_birth", "normalized_value": "1990-08-15", "raw_value": "15/08/1990"}
+    ]
+
+    resp = client.post(
+        "/api/verifications/VD-TEST-REF-2/cross-verify",
+        data={
+            "document_type": "pan",
+            "primary_fields_json": json.dumps(primary_fields)
+        },
+        files={"file": ("supporting_pan.pdf", pan_bytes, "application/pdf")}
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["cross_verify_status"] == "IDENTITY_CONFIRMED"
+    assert data["overall_identity_match"] is True
+    # Verify name and dob matched
+    matches = {c["field"]: c["match"] for c in data["field_comparison"]}
+    assert matches.get("name") is True
+    assert matches.get("dob") is True
+

@@ -156,28 +156,53 @@ class OCRService:
             except Exception:
                 pass
 
-        # 4. Fallback: extract readable strings from file bytes (for synthetic fixtures / EXIF / XMP streams)
+        # 4. Fallback: extract readable strings from file bytes, EXIF, and embedded metadata
         if len(full_text) < 10:
+            candidate_lines = []
+
+            # 4a. PIL image info dictionary (PNG text, JFIF comments, etc.)
+            try:
+                for k, v in getattr(pil_img, 'info', {}).items():
+                    if isinstance(v, str) and len(v.strip()) > 2:
+                        candidate_lines.append(v.strip())
+            except Exception:
+                pass
+
+            # 4b. PIL EXIF metadata
+            try:
+                exif_data = pil_img.getexif()
+                if exif_data:
+                    for tag_id, tag_val in exif_data.items():
+                        if isinstance(tag_val, str) and len(tag_val.strip()) > 2:
+                            candidate_lines.append(tag_val.strip())
+            except Exception:
+                pass
+
+            # 4c. Raw printable byte streams
             try:
                 raw_strs = re.findall(b'[\x20-\x7E]{4,}', file_bytes)
-                candidate_lines = []
                 for s in raw_strs:
                     try:
                         decoded = s.decode('utf-8', errors='ignore').strip()
                         if any(kw in decoded.lower() for kw in [
                             'pan', 'aadhaar', 'passport', 'licence', 'license', 'driving',
                             'dob', 'income', 'bank', 'balance', 'date', 'name', 'father',
-                            'government', 'india', 'certificate', 'voter'
+                            'government', 'india', 'certificate', 'voter', 'male', 'female',
+                            'birth', 'issued', 'valid', 'address', 'card'
                         ]):
                             candidate_lines.append(decoded)
                     except Exception:
                         pass
-                if candidate_lines:
-                    full_text = "\n".join(candidate_lines)
-                    engine_used = "metadata_stream_extractor"
-                    confidence = 0.75
             except Exception:
                 pass
+
+            if candidate_lines:
+                # Deduplicate while preserving order
+                seen = set()
+                deduped = [x for x in candidate_lines if not (x in seen or seen.add(x))]
+                full_text = "\n".join(deduped)
+                engine_used = "metadata_stream_extractor"
+                confidence = 0.75
 
         char_count = len(full_text.strip())
         return {
