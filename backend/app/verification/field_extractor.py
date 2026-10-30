@@ -240,7 +240,9 @@ class FieldExtractor:
                 })
 
             # Name extraction
-            name_match = re.search(r"(?:(?:Name|Signature|Signaure|Sign)\s*[:\n]?\s*|^|\n)\s*([A-Z][A-Z\s]{1,30}?)\s*(?:Date\s*of\s*Birth|DateofBirth|DOB)", text, re.IGNORECASE)
+            name_match = re.search(r"(?:(?:Name|Signa[a-z]*|Sign[a-z]*)[^A-Za-z0-9]*)\s*([A-Za-z][A-Za-z\s\.]{1,30}?)\s*(?:Date\s*of\s*Birth|DateofBirth|DOB)", text, re.IGNORECASE)
+            if not name_match:
+                name_match = re.search(r"\b([A-Z][A-Z\s]{1,30}?)\s*(?:Date\s*of\s*Birth|DateofBirth|DOB)", text)
             if not name_match:
                 name_match = re.search(r"Name\s*[:\n]\s*([A-Za-z\s]{3,35})(?:\n|Son|Daughter|Father|Date)", text, re.IGNORECASE)
             if name_match:

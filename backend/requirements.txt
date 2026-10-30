@@ -8,3 +8,5 @@ pillow>=10.4.0
 numpy>=1.26.0
 httpx>=0.27.0
 pytest>=8.3.0
+winocr>=0.0.15; sys_platform == 'win32'
+nest_asyncio2>=0.1.1
