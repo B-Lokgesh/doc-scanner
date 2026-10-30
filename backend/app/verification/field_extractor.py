@@ -139,13 +139,26 @@ class FieldExtractor:
                 })
 
             # Name
-            name_match = re.search(r"(?:government of india|uidai|enrolment)\s*\n([A-Z][a-zA-Z\s]{2,30})\n", text, re.IGNORECASE)
+            name_match = re.search(r"(?:government of india|uidai|enrolment)\s*[\n:]?\s*([A-Z][a-zA-Z\s]{2,30}?)(?=\s*(?:\n|DOB|Spbs|Year|Gender|Male|Female|[0-9]{2}[/-]))", text, re.IGNORECASE)
+            if not name_match:
+                name_match = re.search(r"(?:government of india|uidai|enrolment)\s*\n([A-Z][a-zA-Z\s]{2,30})\n", text, re.IGNORECASE)
             if name_match:
                 fields.append({
                     "field_name": "holder_name",
                     "raw_value": name_match.group(1).strip(),
                     "normalized_value": name_match.group(1).strip().title(),
-                    "extraction_confidence": 0.80,
+                    "extraction_confidence": 0.85,
+                    "is_sensitive": False
+                })
+
+            # Pin code
+            pin_match = re.search(r"\b([1-9][0-9]{5})\b", text)
+            if pin_match:
+                fields.append({
+                    "field_name": "pin_code",
+                    "raw_value": pin_match.group(1),
+                    "normalized_value": pin_match.group(1),
+                    "extraction_confidence": 0.90,
                     "is_sensitive": False
                 })
 
@@ -213,7 +226,7 @@ class FieldExtractor:
                 })
 
         elif doc_type == "driving_licence":
-            # DL Number: State code (2 letters) + 2 digits + year/serial (e.g. DL14 20110012345 or MH02-20150001234)
+            # DL Number: State code (2 letters) + 2 digits + year/serial (e.g. DL14 20110012345 or TN94Z20250000206 or MH02-20150001234)
             dl_match = re.search(r"\b([A-Z]{2}[0-9]{2}[ -]?[0-9]{11})\b", text)
             if not dl_match:
                 dl_match = re.search(r"\b([A-Z]{2}[0-9]{2}[A-Z0-9 -]{7,15})\b", text)
@@ -222,17 +235,110 @@ class FieldExtractor:
                     "field_name": "dl_number",
                     "raw_value": dl_match.group(1).strip(),
                     "normalized_value": dl_match.group(1).strip().replace(" ", "-"),
-                    "extraction_confidence": 0.90,
+                    "extraction_confidence": 0.95,
                     "is_sensitive": True
                 })
 
-            exp_match = re.search(r"(?:valid\s*till|valid\s*upto|expiry\s*date)[\s:]*([0-9]{2}[/-][0-9]{2}[/-][0-9]{4})", text, re.IGNORECASE)
-            if exp_match:
+            # Name extraction
+            name_match = re.search(r"(?:(?:Name|Signature|Signaure|Sign)\s*[:\n]?\s*|^|\n)\s*([A-Z][A-Z\s]{1,30}?)\s*(?:Date\s*of\s*Birth|DateofBirth|DOB)", text, re.IGNORECASE)
+            if not name_match:
+                name_match = re.search(r"Name\s*[:\n]\s*([A-Za-z\s]{3,35})(?:\n|Son|Daughter|Father|Date)", text, re.IGNORECASE)
+            if name_match:
+                val = name_match.group(1).strip()
+                if not any(k in val.lower() for k in ["government", "driving", "licence", "license", "tamil", "union", "india"]):
+                    fields.append({
+                        "field_name": "holder_name",
+                        "raw_value": val,
+                        "normalized_value": val.title(),
+                        "extraction_confidence": 0.90,
+                        "is_sensitive": False
+                    })
+
+            # Date of Birth
+            dob_match = re.search(r"(?:Date\s*of\s*Birth|DateofBirth|DOB)[\s:]*([0-9]{2}[/-][0-9]{2}[/-][0-9]{4})", text, re.IGNORECASE)
+            if dob_match:
                 fields.append({
-                    "field_name": "expiry_date",
-                    "raw_value": exp_match.group(1),
-                    "normalized_value": exp_match.group(1),
-                    "extraction_confidence": 0.90,
+                    "field_name": "date_of_birth",
+                    "raw_value": dob_match.group(1),
+                    "normalized_value": dob_match.group(1),
+                    "extraction_confidence": 0.95,
+                    "is_sensitive": False
+                })
+
+            # Father / Parent Name
+            father_match = re.search(r"(?:Son/Daughter/Wife\s*of|S/D/W\s*of|Father(?:'s)?\s*Name)[\s:]*([A-Za-z\s]{2,30}?)(?=\s*(?:Blo|Organ|Address|\n|$))", text, re.IGNORECASE)
+            if father_match:
+                f_val = father_match.group(1).strip()
+                fields.append({
+                    "field_name": "father_name",
+                    "raw_value": f_val,
+                    "normalized_value": f_val.title(),
+                    "extraction_confidence": 0.85,
+                    "is_sensitive": False
+                })
+
+            # All dates on DL for issue and expiry reconciliation
+            all_dates = re.findall(r"\b([0-9]{2}[/-][0-9]{2}[/-][0-9]{4})\b", text)
+            parsed_dates = []
+            now_dt = datetime.now()
+            for d in all_dates:
+                p = cls.parse_date(d)
+                if p:
+                    # Ignore DOB in issue/expiry determination
+                    if dob_match and d == dob_match.group(1):
+                        continue
+                    parsed_dates.append((p, d))
+
+            if parsed_dates:
+                # Earliest non-DOB date is typically Issue Date
+                earliest = min(parsed_dates, key=lambda x: x[0])
+                fields.append({
+                    "field_name": "issue_date",
+                    "raw_value": earliest[1],
+                    "normalized_value": earliest[1],
+                    "extraction_confidence": 0.85,
+                    "is_sensitive": False
+                })
+                # Latest date is Expiry / Validity Date
+                latest = max(parsed_dates, key=lambda x: x[0])
+                if latest[0] != earliest[0]:
+                    fields.append({
+                        "field_name": "expiry_date",
+                        "raw_value": latest[1],
+                        "normalized_value": latest[1],
+                        "extraction_confidence": 0.90,
+                        "is_sensitive": False
+                    })
+            else:
+                exp_match = re.search(r"(?:valid\s*till|valid\s*upto|expiry\s*date|validity\s*\(nt\))[\s:]*([0-9]{2}[/-][0-9]{2}[/-][0-9]{4})", text, re.IGNORECASE)
+                if exp_match:
+                    fields.append({
+                        "field_name": "expiry_date",
+                        "raw_value": exp_match.group(1),
+                        "normalized_value": exp_match.group(1),
+                        "extraction_confidence": 0.90,
+                        "is_sensitive": False
+                    })
+
+            # Blood Group
+            blood_match = re.search(r"(?:Blo[^\w\s]*t?Group|Blood\s*Group)[\s:]*([ABO0][12]?[+-])", text, re.IGNORECASE)
+            if blood_match:
+                fields.append({
+                    "field_name": "blood_group",
+                    "raw_value": blood_match.group(1).strip(),
+                    "normalized_value": blood_match.group(1).strip(),
+                    "extraction_confidence": 0.85,
+                    "is_sensitive": False
+                })
+
+            # Address
+            addr_match = re.search(r"(?:Address[\s:]*|NO\s+\d+[\w\s,-]+)\s*([A-Za-z0-9\s,/-]{10,120}?\d{6})", text, re.IGNORECASE)
+            if addr_match:
+                fields.append({
+                    "field_name": "address",
+                    "raw_value": addr_match.group(0).strip(),
+                    "normalized_value": addr_match.group(0).strip(),
+                    "extraction_confidence": 0.80,
                     "is_sensitive": False
                 })
 

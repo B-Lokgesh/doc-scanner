@@ -315,6 +315,31 @@ class DocumentRulesEngine:
                 })
             else:
                 dl_val = dl_field["raw_value"]
+                # State code validation (first 2 letters)
+                state_code = dl_val[:2].upper()
+                valid_states = {
+                    "AN", "AP", "AR", "AS", "BR", "CH", "CG", "DD", "DL", "DN",
+                    "GA", "GJ", "HR", "HP", "JH", "JK", "KA", "KL", "LA", "LD",
+                    "MP", "MH", "MN", "ML", "MZ", "NL", "OD", "PB", "PY", "RJ",
+                    "SK", "TN", "TR", "TS", "UK", "UP", "WB"
+                }
+                if state_code in valid_states:
+                    checks.append({
+                        "check_name": "Driving Licence State Jurisdiction",
+                        "result": "PASSED",
+                        "severity": "INFO",
+                        "explanation": f"Licence state prefix '{state_code}' corresponds to a recognized Indian Motor Vehicles authority.",
+                        "evidence_reference": f"Jurisdiction: {state_code}"
+                    })
+                else:
+                    checks.append({
+                        "check_name": "Driving Licence State Jurisdiction",
+                        "result": "WARNING",
+                        "severity": "LOW",
+                        "explanation": f"State prefix '{state_code}' not in standard state abbreviation list.",
+                        "evidence_reference": f"Prefix: {state_code}"
+                    })
+
                 checks.append({
                     "check_name": "Driving Licence Number Structure",
                     "result": "PASSED",
@@ -322,6 +347,40 @@ class DocumentRulesEngine:
                     "explanation": f"Licence number format successfully captured.",
                     "evidence_reference": f"DL: {dl_val}"
                 })
+
+            # Holder Name Check
+            name_field = field_dict.get("holder_name")
+            if name_field and name_field.get("normalized_value"):
+                checks.append({
+                    "check_name": "Driving Licence Holder Name Verification",
+                    "result": "PASSED",
+                    "severity": "INFO",
+                    "explanation": f"Licence holder name identified as '{name_field['normalized_value']}'.",
+                    "evidence_reference": f"Name: {name_field['normalized_value']}"
+                })
+
+            # Minimum Driving Age Check
+            dob_field = field_dict.get("date_of_birth")
+            if dob_field and dob_field.get("raw_value"):
+                dob_dt = FieldExtractor.parse_date(dob_field["raw_value"])
+                if dob_dt:
+                    age_years = (now - dob_dt).days / 365.25
+                    if age_years >= 18:
+                        checks.append({
+                            "check_name": "Statutory Minimum Driving Age Check",
+                            "result": "PASSED",
+                            "severity": "INFO",
+                            "explanation": f"Applicant age ({int(age_years)} years) satisfies the Motor Vehicles Act minimum age requirement (18+).",
+                            "evidence_reference": f"Age: {int(age_years)} yrs (DOB: {dob_field['raw_value']})"
+                        })
+                    else:
+                        checks.append({
+                            "check_name": "Statutory Minimum Driving Age Check",
+                            "result": "FAILED",
+                            "severity": "CRITICAL",
+                            "explanation": f"Applicant age ({int(age_years)} years) is below the statutory driving age of 18.",
+                            "evidence_reference": f"Age: {int(age_years)} yrs"
+                        })
 
             exp_field = field_dict.get("expiry_date")
             if exp_field and exp_field.get("raw_value"):

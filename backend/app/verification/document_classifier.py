@@ -31,8 +31,13 @@ class DocumentClassifier:
             "min_score": 2
         },
         "driving_licence": {
-            "keywords": ["driving licence", "driving license", "dl no", "licence to drive", "motor vehicles", "transport department", "rto"],
-            "regex": r"\b[A-Z]{2}[0-9]{2}[ -]?[0-9]{11}\b",
+            "keywords": [
+                "driving licence", "driving license", "dl no", "licence to drive", "motor vehicles",
+                "transport department", "rto", "indian union", "union driving licence",
+                "issued by government", "validity (nt)", "validity (tr)", "validity",
+                "holder's signature", "son/daughter/wife", "blood group", "organ donor", "licence"
+            ],
+            "regex": r"\b[A-Z]{2}[0-9]{2}[A-Z0-9 -]{7,15}\b",
             "min_score": 2
         },
         "voter_id": {
