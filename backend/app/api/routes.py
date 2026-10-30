@@ -173,13 +173,16 @@ def get_health():
     except Exception:
         db_ok = False
 
+    from app.verification.ocr_service import _rapid_ocr, _rapid_ocr_error
     return {
         "status": "healthy" if db_ok else "degraded",
         "service": settings.PROJECT_NAME,
         "version": settings.VERSION,
         "database_connected": db_ok,
         "timestamp": datetime.now().isoformat(),
-        "storage_dirs_ready": UPLOAD_DIR.exists() and REPORT_DIR.exists() and MY_DOC_DIR.exists()
+        "storage_dirs_ready": UPLOAD_DIR.exists() and REPORT_DIR.exists() and MY_DOC_DIR.exists(),
+        "rapid_ocr_active": _rapid_ocr is not None,
+        "rapid_ocr_error": _rapid_ocr_error
     }
 
 @router.get("/document-types")

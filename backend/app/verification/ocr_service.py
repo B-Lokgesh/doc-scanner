@@ -18,11 +18,13 @@ try:
 except Exception:
     cv2 = None
 
+_rapid_ocr_error = None
 try:
     from rapidocr_onnxruntime import RapidOCR
     _rapid_ocr = RapidOCR()
-except Exception:
+except Exception as e:
     _rapid_ocr = None
+    _rapid_ocr_error = f"{type(e).__name__}: {str(e)}"
 
 try:
     import winocr
