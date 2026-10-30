@@ -138,18 +138,22 @@ class FieldExtractor:
                     "is_sensitive": False
                 })
 
-            # Name
-            name_match = re.search(r"(?:government of india|uidai|enrolment)\s*[\n:]?\s*([A-Z][a-zA-Z\s]{2,30}?)(?=\s*(?:\n|DOB|Spbs|Year|Gender|Male|Female|[0-9]{2}[/-]))", text, re.IGNORECASE)
+            # Name extraction (handles standard Aadhaar cards, e-Aadhaar headers, and labeled formats)
+            name_match = re.search(r"(?:name\s*[:\n]|holder\s*[:\n])\s*([A-Za-z\s\.]{2,35})(?=\s*(?:\n|dob|date|gender|year|male|female|$))", text, re.IGNORECASE)
+            if not name_match:
+                name_match = re.search(r"(?:government of india|uidai|enrolment|pehchan)\s*[\n:]?\s*([A-Z][a-zA-Z\s]{2,30}?)(?=\s*(?:\n|DOB|Spbs|Year|Gender|Male|Female|[0-9]{2}[/-]))", text, re.IGNORECASE)
             if not name_match:
                 name_match = re.search(r"(?:government of india|uidai|enrolment)\s*\n([A-Z][a-zA-Z\s]{2,30})\n", text, re.IGNORECASE)
             if name_match:
-                fields.append({
-                    "field_name": "holder_name",
-                    "raw_value": name_match.group(1).strip(),
-                    "normalized_value": name_match.group(1).strip().title(),
-                    "extraction_confidence": 0.85,
-                    "is_sensitive": False
-                })
+                val = name_match.group(1).strip()
+                if not any(k in val.lower() for k in ["government", "unique", "authority", "india", "enrolment"]):
+                    fields.append({
+                        "field_name": "holder_name",
+                        "raw_value": val,
+                        "normalized_value": val.title(),
+                        "extraction_confidence": 0.90,
+                        "is_sensitive": False
+                    })
 
             # Pin code
             pin_match = re.search(r"\b([1-9][0-9]{5})\b", text)
@@ -175,7 +179,7 @@ class FieldExtractor:
                 })
 
             # Nationality
-            nat_match = re.search(r"nationality[\s:]*([A-Z]{3,20})", text, re.IGNORECASE)
+            nat_match = re.search(r"nationality[\s:]*([A-Za-z]{3,20})", text, re.IGNORECASE)
             if nat_match:
                 fields.append({
                     "field_name": "nationality",
@@ -185,8 +189,8 @@ class FieldExtractor:
                     "is_sensitive": False
                 })
 
-            # Given Name & Surname
-            sur_match = re.search(r"surname[\s:]*([A-Z\s]{2,30})", text, re.IGNORECASE)
+            # Given Name & Surname (stop before newline to avoid trailing field labels)
+            sur_match = re.search(r"surname[\s:]*([A-Za-z]{2,30})", text, re.IGNORECASE)
             if sur_match:
                 fields.append({
                     "field_name": "surname",
@@ -195,13 +199,49 @@ class FieldExtractor:
                     "extraction_confidence": 0.85,
                     "is_sensitive": False
                 })
-            given_match = re.search(r"given\s*name(?:s)?[\s:]*([A-Z\s]{2,30})", text, re.IGNORECASE)
+            given_match = re.search(r"given\s*name(?:s)?[\s:]*([A-Za-z\s]{2,30}?)(?=\n|$)", text, re.IGNORECASE)
             if given_match:
                 fields.append({
                     "field_name": "given_name",
                     "raw_value": given_match.group(1).strip(),
                     "normalized_value": given_match.group(1).strip().title(),
                     "extraction_confidence": 0.85,
+                    "is_sensitive": False
+                })
+
+            # Combine full holder_name for passport
+            given_str = given_match.group(1).strip() if given_match else ""
+            sur_str = sur_match.group(1).strip() if sur_match else ""
+            full_pass_name = f"{given_str} {sur_str}".strip()
+            if full_pass_name:
+                fields.append({
+                    "field_name": "holder_name",
+                    "raw_value": full_pass_name,
+                    "normalized_value": full_pass_name.title(),
+                    "extraction_confidence": 0.90,
+                    "is_sensitive": False
+                })
+
+            # Date of Birth
+            dob_match = re.search(r"(?:date\s*of\s*birth|dob)[\s:]*([0-9]{2}[/-][0-9]{2}[/-][0-9]{4})", text, re.IGNORECASE)
+            if dob_match:
+                fields.append({
+                    "field_name": "date_of_birth",
+                    "raw_value": dob_match.group(1),
+                    "normalized_value": dob_match.group(1),
+                    "extraction_confidence": 0.90,
+                    "is_sensitive": False
+                })
+
+            # Gender / Sex
+            gender_match = re.search(r"(?:sex|gender)[\s:]*([MF]|Male|Female)\b", text, re.IGNORECASE)
+            if gender_match:
+                g_val = "Male" if gender_match.group(1).upper() in ["M", "MALE"] else "Female"
+                fields.append({
+                    "field_name": "gender",
+                    "raw_value": gender_match.group(1),
+                    "normalized_value": g_val,
+                    "extraction_confidence": 0.90,
                     "is_sensitive": False
                 })
 
@@ -240,7 +280,9 @@ class FieldExtractor:
                 })
 
             # Name extraction
-            name_match = re.search(r"(?:(?:Name|Signa[a-z]*|Sign[a-z]*)[^A-Za-z0-9]*)\s*([A-Za-z][A-Za-z\s\.]{1,30}?)\s*(?:Date\s*of\s*Birth|DateofBirth|DOB)", text, re.IGNORECASE)
+            name_match = re.search(r"(?:Name\s*[:\n]|Holder\s*[:\n])\s*([A-Za-z\s\.]{2,35})(?=\s*(?:\n|son|daughter|father|dob|date|$))", text, re.IGNORECASE)
+            if not name_match:
+                name_match = re.search(r"(?:(?:Name|Signa[a-z]*|Sign[a-z]*)[^A-Za-z0-9]*)\s*([A-Za-z][A-Za-z\s\.]{1,30}?)\s*(?:Date\s*of\s*Birth|DateofBirth|DOB)", text, re.IGNORECASE)
             if not name_match:
                 name_match = re.search(r"\b([A-Z][A-Z\s]{1,30}?)\s*(?:Date\s*of\s*Birth|DateofBirth|DOB)", text)
             if not name_match:
@@ -268,7 +310,7 @@ class FieldExtractor:
                 })
 
             # Father / Parent Name
-            father_match = re.search(r"(?:Son/Daughter/Wife\s*of|S/D/W\s*of|Father(?:'s)?\s*Name)[\s:]*([A-Za-z\s]{2,30}?)(?=\s*(?:Blo|Organ|Address|\n|$))", text, re.IGNORECASE)
+            father_match = re.search(r"(?:Son(?:/|\s+)of|Daughter(?:/|\s+)of|Wife(?:/|\s+)of|Son/Daughter/Wife\s*of|S/D/W\s*of|Father(?:'s)?\s*Name)[\s:]*([A-Za-z\s\.]{2,30}?)(?=\s*(?:Blo|Organ|Address|\n|$))", text, re.IGNORECASE)
             if father_match:
                 f_val = father_match.group(1).strip()
                 fields.append({
@@ -282,7 +324,6 @@ class FieldExtractor:
             # All dates on DL for issue and expiry reconciliation
             all_dates = re.findall(r"\b([0-9]{2}[/-][0-9]{2}[/-][0-9]{4})\b", text)
             parsed_dates = []
-            now_dt = datetime.now()
             for d in all_dates:
                 p = cls.parse_date(d)
                 if p:
@@ -333,7 +374,7 @@ class FieldExtractor:
                     "is_sensitive": False
                 })
 
-            # Address
+            # Address & Pin Code
             addr_match = re.search(r"(?:Address[\s:]*|NO\s+\d+[\w\s,-]+)\s*([A-Za-z0-9\s,/-]{10,120}?\d{6})", text, re.IGNORECASE)
             if addr_match:
                 fields.append({
@@ -341,6 +382,15 @@ class FieldExtractor:
                     "raw_value": addr_match.group(0).strip(),
                     "normalized_value": addr_match.group(0).strip(),
                     "extraction_confidence": 0.80,
+                    "is_sensitive": False
+                })
+            pin_match = re.search(r"\b([1-9][0-9]{5})\b", text)
+            if pin_match:
+                fields.append({
+                    "field_name": "pin_code",
+                    "raw_value": pin_match.group(1),
+                    "normalized_value": pin_match.group(1),
+                    "extraction_confidence": 0.90,
                     "is_sensitive": False
                 })
 
@@ -356,6 +406,62 @@ class FieldExtractor:
                     "is_sensitive": True
                 })
 
+            # Elector / Holder Name
+            name_match = re.search(r"(?:Elector(?:'s)?\s*Name|Name\s*[:\n]|Holder\s*[:\n])\s*([A-Za-z\s\.]{2,35})(?=\s*(?:\n|father|husband|sex|gender|dob|age|$))", text, re.IGNORECASE)
+            if name_match:
+                val = name_match.group(1).strip()
+                fields.append({
+                    "field_name": "holder_name",
+                    "raw_value": val,
+                    "normalized_value": val.title(),
+                    "extraction_confidence": 0.90,
+                    "is_sensitive": False
+                })
+
+            # Father / Husband Name
+            father_match = re.search(r"(?:Father(?:'s)?\s*Name|Husband(?:'s)?\s*Name|Relation\s*Name)[\s:]*([A-Za-z\s\.]{2,35})(?=\s*(?:\n|sex|gender|dob|age|$))", text, re.IGNORECASE)
+            if father_match:
+                fields.append({
+                    "field_name": "father_name",
+                    "raw_value": father_match.group(1).strip(),
+                    "normalized_value": father_match.group(1).strip().title(),
+                    "extraction_confidence": 0.85,
+                    "is_sensitive": False
+                })
+
+            # Date of Birth
+            dob_match = re.search(r"(?:Date\s*of\s*Birth|DOB)[\s:]*([0-9]{2}[/-][0-9]{2}[/-][0-9]{4})", text, re.IGNORECASE)
+            if dob_match:
+                fields.append({
+                    "field_name": "date_of_birth",
+                    "raw_value": dob_match.group(1),
+                    "normalized_value": dob_match.group(1),
+                    "extraction_confidence": 0.90,
+                    "is_sensitive": False
+                })
+
+            # Gender
+            gender_match = re.search(r"(?:Sex|Gender)[\s:]*([MF]|Male|Female)\b", text, re.IGNORECASE)
+            if gender_match:
+                g_val = "Male" if gender_match.group(1).upper() in ["M", "MALE"] else "Female"
+                fields.append({
+                    "field_name": "gender",
+                    "raw_value": gender_match.group(1),
+                    "normalized_value": g_val,
+                    "extraction_confidence": 0.90,
+                    "is_sensitive": False
+                })
+
+            pin_match = re.search(r"\b([1-9][0-9]{5})\b", text)
+            if pin_match:
+                fields.append({
+                    "field_name": "pin_code",
+                    "raw_value": pin_match.group(1),
+                    "normalized_value": pin_match.group(1),
+                    "extraction_confidence": 0.90,
+                    "is_sensitive": False
+                })
+
         elif doc_type == "bank_statement":
             # Account Number
             acc_match = re.search(r"(?:account\s*(?:no|number)|a/c\s*(?:no|number))[\s:]*([0-9]{9,18})", text, re.IGNORECASE)
@@ -368,6 +474,17 @@ class FieldExtractor:
                     "normalized_value": masked_acc,
                     "extraction_confidence": 0.95,
                     "is_sensitive": True
+                })
+
+            # Account Holder Name
+            name_match = re.search(r"(?:Account\s*Holder(?:\s*Name)?|Customer\s*Name|Account\s*Name|Name\s*[:\n])\s*([A-Za-z\s\.]{2,35})(?=\s*(?:\n|account|a/c|statement|address|$))", text, re.IGNORECASE)
+            if name_match:
+                fields.append({
+                    "field_name": "holder_name",
+                    "raw_value": name_match.group(1).strip(),
+                    "normalized_value": name_match.group(1).strip().title(),
+                    "extraction_confidence": 0.90,
+                    "is_sensitive": False
                 })
 
             # Opening Balance
@@ -418,6 +535,16 @@ class FieldExtractor:
                     "is_sensitive": False
                 })
 
+            pin_match = re.search(r"\b([1-9][0-9]{5})\b", text)
+            if pin_match:
+                fields.append({
+                    "field_name": "pin_code",
+                    "raw_value": pin_match.group(1),
+                    "normalized_value": pin_match.group(1),
+                    "extraction_confidence": 0.85,
+                    "is_sensitive": False
+                })
+
         elif doc_type == "educational_certificate":
             # Roll Number
             roll_match = re.search(r"(?:roll\s*(?:no|number)|registration\s*(?:no|number))[\s:]*([A-Za-z0-9/-]{4,20})", text, re.IGNORECASE)
@@ -426,6 +553,39 @@ class FieldExtractor:
                     "field_name": "roll_number",
                     "raw_value": roll_match.group(1).strip(),
                     "normalized_value": roll_match.group(1).strip(),
+                    "extraction_confidence": 0.90,
+                    "is_sensitive": False
+                })
+
+            # Candidate / Student Name
+            name_match = re.search(r"(?:This\s*is\s*to\s*certify\s*that|Candidate(?:'s)?\s*Name|Student\s*Name|Name\s*[:\n])\s*([A-Za-z\s\.]{2,35})(?=\s*(?:\n|roll|reg|son|daughter|father|born|dob|date|$))", text, re.IGNORECASE)
+            if name_match:
+                fields.append({
+                    "field_name": "holder_name",
+                    "raw_value": name_match.group(1).strip(),
+                    "normalized_value": name_match.group(1).strip().title(),
+                    "extraction_confidence": 0.90,
+                    "is_sensitive": False
+                })
+
+            # Father / Parent Name
+            father_match = re.search(r"(?:Son\s*of|Daughter\s*of|Father(?:'s)?\s*Name)[\s:]*([A-Za-z\s\.]{2,35})(?=\s*(?:\n|roll|reg|dob|date|$))", text, re.IGNORECASE)
+            if father_match:
+                fields.append({
+                    "field_name": "father_name",
+                    "raw_value": father_match.group(1).strip(),
+                    "normalized_value": father_match.group(1).strip().title(),
+                    "extraction_confidence": 0.85,
+                    "is_sensitive": False
+                })
+
+            # Date of Birth
+            dob_match = re.search(r"(?:Date\s*of\s*Birth|DOB|Born\s*on)[\s:]*([0-9]{2}[/-][0-9]{2}[/-][0-9]{4})", text, re.IGNORECASE)
+            if dob_match:
+                fields.append({
+                    "field_name": "date_of_birth",
+                    "raw_value": dob_match.group(1),
+                    "normalized_value": dob_match.group(1),
                     "extraction_confidence": 0.90,
                     "is_sensitive": False
                 })
@@ -464,6 +624,28 @@ class FieldExtractor:
                     "is_sensitive": False
                 })
 
+            # Applicant / Holder Name
+            name_match = re.search(r"(?:Certified\s*that|Applicant\s*Name|Name\s*[:\n])\s*([A-Za-z \.]{2,35}?)(?=\s*(?:\n|son|daughter|resident|annual|$))", text, re.IGNORECASE)
+            if name_match:
+                fields.append({
+                    "field_name": "holder_name",
+                    "raw_value": name_match.group(1).strip(),
+                    "normalized_value": name_match.group(1).strip().title(),
+                    "extraction_confidence": 0.90,
+                    "is_sensitive": False
+                })
+
+            # Father / Spouse Name
+            father_match = re.search(r"(?:Son\s*of|Daughter\s*of|Wife\s*of|Father(?:'s)?\s*Name)[\s:]*([A-Za-z\s\.]{2,35})(?=\s*(?:\n|resident|annual|$))", text, re.IGNORECASE)
+            if father_match:
+                fields.append({
+                    "field_name": "father_name",
+                    "raw_value": father_match.group(1).strip(),
+                    "normalized_value": father_match.group(1).strip().title(),
+                    "extraction_confidence": 0.85,
+                    "is_sensitive": False
+                })
+
             # Annual Income
             inc_match = re.search(r"(?:annual\s*income|income\s*is)[\s:]*(?:rs\.?|inr)?\s*([0-9,]+)", text, re.IGNORECASE)
             if inc_match:
@@ -487,6 +669,16 @@ class FieldExtractor:
                     "is_sensitive": False
                 })
 
+            pin_match = re.search(r"\b([1-9][0-9]{5})\b", text)
+            if pin_match:
+                fields.append({
+                    "field_name": "pin_code",
+                    "raw_value": pin_match.group(1),
+                    "normalized_value": pin_match.group(1),
+                    "extraction_confidence": 0.85,
+                    "is_sensitive": False
+                })
+
         # General dates fallback if no specific date extracted
         date_matches = re.findall(r"\b([0-9]{2}[/-][0-9]{2}[/-][0-9]{4})\b", text)
         if date_matches and not any("date" in f["field_name"] for f in fields):
@@ -497,5 +689,73 @@ class FieldExtractor:
                 "extraction_confidence": 0.80,
                 "is_sensitive": False
             })
+
+        # Universal Identity Attribute Enrichment:
+        # Ensures critical cross-verification identity attributes (Name, DOB, Father Name, Pin Code, Gender)
+        # are detected across all document variants when present in OCR or electronic document text.
+        field_names = {f["field_name"] for f in fields}
+
+        if "holder_name" not in field_names and "given_name" not in field_names:
+            gen_name = re.search(r"(?:Name|Holder|Applicant|Student|Candidate|Customer|Elector)\s*[:\n]\s*([A-Za-z\s\.]{2,35})(?=\n|$)", text, re.IGNORECASE)
+            if gen_name:
+                v = gen_name.group(1).strip()
+                if not any(k in v.lower() for k in ["government", "authority", "department", "statement", "certificate"]):
+                    fields.append({
+                        "field_name": "holder_name",
+                        "raw_value": v,
+                        "normalized_value": v.title(),
+                        "extraction_confidence": 0.85,
+                        "is_sensitive": False
+                    })
+                    field_names.add("holder_name")
+
+        if "date_of_birth" not in field_names:
+            gen_dob = re.search(r"(?:DOB|Date\s*of\s*Birth|Birth\s*Date|Born\s*on)[\s:\-]+([0-9]{2}[/-][0-9]{2}[/-][0-9]{4}|[0-9]{4})", text, re.IGNORECASE)
+            if gen_dob:
+                fields.append({
+                    "field_name": "date_of_birth",
+                    "raw_value": gen_dob.group(1),
+                    "normalized_value": gen_dob.group(1),
+                    "extraction_confidence": 0.88,
+                    "is_sensitive": False
+                })
+                field_names.add("date_of_birth")
+
+        if "father_name" not in field_names:
+            gen_father = re.search(r"(?:Father(?:'s)?\s*Name|S/O|D/O|W/O|Son\s*of|Daughter\s*of|Wife\s*of|Parent\s*Name)[\s:\-]+([A-Za-z\s\.]{2,35})(?=\n|$)", text, re.IGNORECASE)
+            if gen_father:
+                v = gen_father.group(1).strip()
+                fields.append({
+                    "field_name": "father_name",
+                    "raw_value": v,
+                    "normalized_value": v.title(),
+                    "extraction_confidence": 0.85,
+                    "is_sensitive": False
+                })
+                field_names.add("father_name")
+
+        if "pin_code" not in field_names:
+            pin_m = re.search(r"\b([1-9][0-9]{5})\b", text)
+            if pin_m:
+                fields.append({
+                    "field_name": "pin_code",
+                    "raw_value": pin_m.group(1),
+                    "normalized_value": pin_m.group(1),
+                    "extraction_confidence": 0.85,
+                    "is_sensitive": False
+                })
+                field_names.add("pin_code")
+
+        if "gender" not in field_names:
+            g_m = re.search(r"\b(Male|Female|Transgender)\b", text, re.IGNORECASE)
+            if g_m:
+                fields.append({
+                    "field_name": "gender",
+                    "raw_value": g_m.group(1),
+                    "normalized_value": g_m.group(1).capitalize(),
+                    "extraction_confidence": 0.85,
+                    "is_sensitive": False
+                })
+                field_names.add("gender")
 
         return fields

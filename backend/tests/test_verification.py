@@ -326,3 +326,58 @@ def test_53_cross_verify_name_and_dob_variants():
     assert matches.get("name") is True
     assert matches.get("dob") is True
 
+def test_54_cross_verify_matching_aadhaar_and_pan():
+    import json
+    with open(FIXTURES_DIR / "valid_pan.pdf", "rb") as f:
+        pan_bytes = f.read()
+
+    # Primary fields from Aadhaar for same individual Rahul Sharma
+    primary_aadhaar_fields = [
+        {"field_name": "holder_name", "normalized_value": "Rahul Sharma", "raw_value": "Rahul Sharma"},
+        {"field_name": "date_of_birth", "normalized_value": "15/08/1990", "raw_value": "15/08/1990"},
+        {"field_name": "pin_code", "normalized_value": "560001", "raw_value": "560001"}
+    ]
+
+    resp = client.post(
+        "/api/verifications/VD-AADHAAR-REF/cross-verify",
+        data={
+            "document_type": "pan",
+            "primary_fields_json": json.dumps(primary_aadhaar_fields)
+        },
+        files={"file": ("supporting_pan.pdf", pan_bytes, "application/pdf")}
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["cross_verify_status"] == "IDENTITY_CONFIRMED"
+    assert data["overall_identity_match"] is True
+    assert data["matched_fields"] >= 2
+
+def test_55_cross_verify_db_fallback_without_frontend_fields():
+    with open(FIXTURES_DIR / "valid_pan.pdf", "rb") as f:
+        pan_bytes = f.read()
+
+    # 1. First upload primary document to store it in DB
+    p_resp = client.post(
+        "/api/verifications",
+        data={"document_type": "pan"},
+        files={"file": ("primary_pan.pdf", pan_bytes, "application/pdf")}
+    )
+    assert p_resp.status_code == 200
+    ref_id = p_resp.json()["reference_id"]
+
+    # 2. Call cross-verify with empty primary_fields_json (simulating page reload or direct API call)
+    cross_resp = client.post(
+        f"/api/verifications/{ref_id}/cross-verify",
+        data={
+            "document_type": "pan",
+            "primary_fields_json": "[]"
+        },
+        files={"file": ("supporting_pan.pdf", pan_bytes, "application/pdf")}
+    )
+    assert cross_resp.status_code == 200
+    data = cross_resp.json()
+    assert data["cross_verify_status"] == "IDENTITY_CONFIRMED"
+    assert data["overall_identity_match"] is True
+    assert data["matched_fields"] >= 2
+
+
