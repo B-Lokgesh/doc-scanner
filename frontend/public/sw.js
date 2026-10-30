@@ -1,7 +1,5 @@
-const CACHE_NAME = 'veridoc-ai-cache-v2';
+const CACHE_NAME = 'veridoc-ai-cache-v3';
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
   '/manifest.json',
   '/logo.png',
   '/pwa-192x192.png',
@@ -10,7 +8,7 @@ const STATIC_ASSETS = [
   '/apple-touch-icon.png',
 ];
 
-// Install event: cache static assets
+// Install event: cache static assets only
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
@@ -20,24 +18,27 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// Activate event: clean up old caches
+// Activate event: clean up all old caches immediately
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
-      return Promise.all(
-        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
-      );
+      return Promise.all(keys.map((key) => caches.delete(key)));
     })
   );
   self.clients.claim();
 });
 
-// Fetch event: network first for API, cache first for static app shell
+// Fetch event: network first for HTML and API, cache only for static assets
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Never cache sensitive API responses or document uploads
-  if (url.pathname.startsWith('/api/')) {
+  // Never cache API or HTML navigation requests - always network first
+  if (
+    url.pathname.startsWith('/api/') ||
+    event.request.mode === 'navigate' ||
+    url.pathname === '/' ||
+    url.pathname.endsWith('.html')
+  ) {
     return;
   }
 
@@ -46,12 +47,7 @@ self.addEventListener('fetch', (event) => {
       if (cachedResponse) {
         return cachedResponse;
       }
-      return fetch(event.request).catch(() => {
-        // Return index.html for navigation requests when offline
-        if (event.request.mode === 'navigate') {
-          return caches.match('/index.html');
-        }
-      });
+      return fetch(event.request);
     })
   );
 });
