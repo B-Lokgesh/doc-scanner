@@ -12,9 +12,10 @@ import {
   Eye,
   CheckCircle2,
   Lock,
+  Copy,
 } from 'lucide-react';
-import { fetchDocumentTypes, uploadAndVerifyDocument } from '../services/api';
-import { DocumentTypeItem } from '../types';
+import { fetchDocumentTypes, uploadAndVerifyDocument, checkDuplicateDocument } from '../services/api';
+import { DocumentTypeItem, DuplicateCheckResponse } from '../types';
 import { useToast } from '../components/Toast';
 
 export const UploadPage: React.FC = () => {
@@ -30,6 +31,7 @@ export const UploadPage: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentStageIndex, setCurrentStageIndex] = useState(0);
+  const [duplicateInfo, setDuplicateInfo] = useState<DuplicateCheckResponse | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -57,8 +59,9 @@ export const UploadPage: React.FC = () => {
     max_size_mb: 10,
   };
 
-  const handleFileSelect = (file: File) => {
+  const handleFileSelect = async (file: File) => {
     setErrorMsg(null);
+    setDuplicateInfo(null);
 
     // 1. Check size limit
     if (file.size === 0) {
@@ -95,6 +98,16 @@ export const UploadPage: React.FC = () => {
     } else {
       setPreviewUrl(null);
     }
+
+    // SHA-256 duplicate pre-check
+    try {
+      const dup = await checkDuplicateDocument(file);
+      if (dup.is_duplicate) {
+        setDuplicateInfo(dup);
+      }
+    } catch {
+      // Non-blocking
+    }
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -116,6 +129,7 @@ export const UploadPage: React.FC = () => {
 
   const handleRemoveFile = () => {
     setSelectedFile(null);
+    setDuplicateInfo(null);
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
       setPreviewUrl(null);
@@ -188,6 +202,43 @@ export const UploadPage: React.FC = () => {
           <button onClick={() => setErrorMsg(null)} className="text-red-400 hover:text-red-700">
             <X className="w-4 h-4" />
           </button>
+        </div>
+      )}
+
+      {/* Duplicate Document Alert Banner */}
+      {duplicateInfo?.is_duplicate && (
+        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-amber-100 rounded-xl text-amber-700 shrink-0 mt-0.5">
+              <Copy className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-amber-950">Duplicate Document Detected (SHA-256 Match)</p>
+              <p className="text-xs text-amber-800 mt-0.5">
+                This exact file was previously audited under reference{' '}
+                <strong className="font-mono">{duplicateInfo.existing_reference_id}</strong>
+                {duplicateInfo.existing_status ? ` (${duplicateInfo.existing_status})` : ''}.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {duplicateInfo.existing_reference_id && (
+              <button
+                type="button"
+                onClick={() => navigate(`/results/${duplicateInfo.existing_reference_id}`)}
+                className="px-3.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs"
+              >
+                View Existing Audit
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setDuplicateInfo(null)}
+              className="px-3 py-1.5 rounded-lg bg-white border border-amber-200 text-amber-800 hover:bg-amber-100 text-xs font-medium"
+            >
+              Verify Again
+            </button>
+          </div>
         </div>
       )}
 

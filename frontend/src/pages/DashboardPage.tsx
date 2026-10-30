@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   XCircle,
   AlertTriangle,
-  HelpCircle,
   PlusCircle,
   History,
   FileText,
@@ -14,13 +13,19 @@ import {
   Eye,
   RefreshCw,
   Sparkles,
+  FolderLock,
+  BarChart3,
+  User as UserIcon,
+  ShieldCheck,
 } from 'lucide-react';
 import { fetchDashboardStats, getReportDownloadUrl } from '../services/api';
 import { DashboardStats } from '../types';
 import { StatusBadge } from '../components/StatusBadge';
 import { FilePreviewModal } from '../components/FilePreviewModal';
+import { useAuth } from '../context/AuthContext';
 
 export const DashboardPage: React.FC = () => {
+  const { user, isAuthenticated } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -45,16 +50,14 @@ export const DashboardPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="space-y-6">
-          <div className="h-8 w-48 bg-slate-200 animate-pulse rounded-lg" />
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-28 bg-slate-100 animate-pulse rounded-xl" />
-            ))}
-          </div>
-          <div className="h-64 bg-slate-100 animate-pulse rounded-xl" />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+        <div className="h-8 w-64 bg-slate-200 animate-pulse rounded-lg" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-28 bg-slate-100 animate-pulse rounded-2xl" />
+          ))}
         </div>
+        <div className="h-64 bg-slate-100 animate-pulse rounded-2xl" />
       </div>
     );
   }
@@ -66,31 +69,48 @@ export const DashboardPage: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-[#14213D] tracking-tight">
-            Verification Dashboard
+      {/* Personalized Welcome Banner */}
+      <div className="p-6 rounded-3xl bg-gradient-to-r from-blue-700 via-indigo-700 to-slate-900 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div className="space-y-1">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md text-xs font-semibold text-blue-100">
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <span>VeriDoc AI Enterprise Engine</span>
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
+            {isAuthenticated && user
+              ? `Welcome back, ${user.full_name}!`
+              : 'Intelligent Verification Dashboard'}
           </h1>
-          <p className="text-xs sm:text-sm text-[#64748B] mt-0.5">
-            Real-time compliance audit statistics and recent verification outcomes.
+          <p className="text-xs sm:text-sm text-blue-100/90 max-w-xl">
+            {isAuthenticated
+              ? 'Your individual data is fully isolated. Inspect your historical audits, upload new documents to My_Doc, and run 8-stage compliance checks.'
+              : 'Evaluate document authenticity, run multi-stage compliance verification, and inspect audit findings in real time.'}
           </p>
         </div>
-        <div className="flex items-center gap-2.5">
+
+        {/* Quick Actions */}
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <Link
+            to="/select-type"
+            className="inline-flex items-center gap-1.5 bg-white text-blue-700 hover:bg-blue-50 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-md transition-all"
+          >
+            <PlusCircle className="w-4 h-4" />
+            <span>Quick Verify</span>
+          </Link>
+          <Link
+            to="/my-doc"
+            className="inline-flex items-center gap-1.5 bg-blue-600/80 hover:bg-blue-600 text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold border border-blue-400/40 backdrop-blur-xs transition-all"
+          >
+            <FolderLock className="w-4 h-4" />
+            <span>My_Doc Vault</span>
+          </Link>
           <button
             onClick={loadStats}
-            className="p-2 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors shadow-xs"
-            title="Refresh metrics"
+            className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
+            title="Refresh statistics"
           >
             <RefreshCw className="w-4 h-4" />
           </button>
-          <Link
-            to="/select-type"
-            className="inline-flex items-center gap-1.5 bg-[#2563EB] hover:bg-[#1d4ed8] text-white px-4 py-2 rounded-lg text-sm font-semibold shadow-xs transition-all hover:shadow"
-          >
-            <PlusCircle className="w-4 h-4" />
-            <span>Verify Document</span>
-          </Link>
         </div>
       </div>
 
@@ -104,76 +124,79 @@ export const DashboardPage: React.FC = () => {
       )}
 
       {/* Metric Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
         {/* Total Documents */}
-        <div className="p-5 rounded-2xl bg-white border border-[#E2E8F0] shadow-xs">
+        <div className="p-5 rounded-2xl bg-white border border-[#E2E8F0] shadow-xs hover:border-blue-200 transition-colors">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-[#64748B]">
-              Total Processed
+              Total Verified
             </span>
-            <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#2563EB] flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-blue-50 text-[#2563EB] flex items-center justify-center">
               <FileCheck2 className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-3xl font-bold text-[#14213D] mt-3">{total}</p>
-          <p className="text-[11px] text-[#64748B] mt-1">Direct from database records</p>
+          <p className="text-3xl font-extrabold text-[#14213D] mt-3">{total}</p>
+          <p className="text-[11px] text-[#64748B] mt-1">Direct from your database records</p>
         </div>
 
         {/* Verified Documents */}
-        <div className="p-5 rounded-2xl bg-white border border-[#E2E8F0] shadow-xs">
+        <div className="p-5 rounded-2xl bg-white border border-[#E2E8F0] shadow-xs hover:border-emerald-200 transition-colors">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-[#15803D]">
               Verified
             </span>
-            <div className="w-8 h-8 rounded-lg bg-[#F0FDF4] text-[#15803D] flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-[#F0FDF4] text-[#15803D] flex items-center justify-center">
               <CheckCircle2 className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-3xl font-bold text-[#14213D] mt-3">{verified}</p>
-          <p className="text-[11px] text-[#15803D] mt-1 font-medium">
+          <p className="text-3xl font-extrabold text-[#14213D] mt-3">{verified}</p>
+          <p className="text-[11px] text-[#15803D] mt-1 font-semibold">
             {total > 0 ? `${((verified / total) * 100).toFixed(0)}% passed available rules` : '0% of total'}
           </p>
         </div>
 
         {/* Invalid Documents */}
-        <div className="p-5 rounded-2xl bg-white border border-[#E2E8F0] shadow-xs">
+        <div className="p-5 rounded-2xl bg-white border border-[#E2E8F0] shadow-xs hover:border-rose-200 transition-colors">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-[#B91C1C]">
               Invalid Documents
             </span>
-            <div className="w-8 h-8 rounded-lg bg-[#FEF2F2] text-[#B91C1C] flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-[#FEF2F2] text-[#B91C1C] flex items-center justify-center">
               <XCircle className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-3xl font-bold text-[#14213D] mt-3">{invalid}</p>
-          <p className="text-[11px] text-[#B91C1C] mt-1 font-medium">
+          <p className="text-3xl font-extrabold text-[#14213D] mt-3">{invalid}</p>
+          <p className="text-[11px] text-[#B91C1C] mt-1 font-semibold">
             Hard rule failures / checksum errors
           </p>
         </div>
 
         {/* Requires Review */}
-        <div className="p-5 rounded-2xl bg-white border border-[#E2E8F0] shadow-xs">
+        <div className="p-5 rounded-2xl bg-white border border-[#E2E8F0] shadow-xs hover:border-amber-200 transition-colors">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-[#B45309]">
               Requires Review
             </span>
-            <div className="w-8 h-8 rounded-lg bg-[#FFFBEB] text-[#B45309] flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-[#FFFBEB] text-[#B45309] flex items-center justify-center">
               <AlertTriangle className="w-4 h-4" />
             </div>
           </div>
-          <p className="text-3xl font-bold text-[#14213D] mt-3">{review}</p>
-          <p className="text-[11px] text-[#B45309] mt-1 font-medium">
+          <p className="text-3xl font-extrabold text-[#14213D] mt-3">{review}</p>
+          <p className="text-[11px] text-[#B45309] mt-1 font-semibold">
             Ambiguous scan / unverified sources
           </p>
         </div>
       </div>
 
-      {/* Distribution Progress Bar */}
+      {/* Distribution Progress Bar & Shortcuts */}
       {total > 0 && (
         <div className="p-5 rounded-2xl bg-white border border-[#E2E8F0] shadow-xs space-y-3">
           <div className="flex items-center justify-between text-xs font-semibold text-[#0F172A]">
             <span>Verification Status Distribution</span>
-            <span className="text-[#64748B]">{total} total records</span>
+            <Link to="/analytics" className="text-blue-600 hover:underline flex items-center gap-1 font-medium">
+              <span>View Full Analytics</span>
+              <ArrowRight className="w-3 h-3" />
+            </Link>
           </div>
           <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden flex">
             {verified > 0 && (
@@ -217,18 +240,25 @@ export const DashboardPage: React.FC = () => {
 
       {/* Recent Activity Table */}
       <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-xs overflow-hidden">
-        <div className="px-6 py-4 border-b border-[#E2E8F0] flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-[#E2E8F0] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h2 className="text-base font-bold text-[#14213D]">Recent Verification Activity</h2>
-            <p className="text-xs text-[#64748B]">Latest evaluated documents stored in local SQLite database.</p>
+            <h2 className="text-base font-bold text-[#14213D]">Previously Verified Documents</h2>
+            <p className="text-xs text-[#64748B]">
+              {isAuthenticated ? 'Private verification records for your account.' : 'Evaluated documents stored in local database.'}
+            </p>
           </div>
-          <Link
-            to="/history"
-            className="text-xs font-semibold text-[#2563EB] hover:text-blue-700 flex items-center gap-1"
-          >
-            <span>View All</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </Link>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500 font-medium">
+              {stats?.recent_verifications?.length || 0} records
+            </span>
+            <button
+              onClick={loadStats}
+              className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:text-blue-600 hover:bg-slate-50"
+              title="Refresh records"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
 
         {total === 0 ? (
@@ -296,6 +326,15 @@ export const DashboardPage: React.FC = () => {
                       {row.created_at ? row.created_at.slice(0, 16).replace('T', ' ') : 'N/A'}
                     </td>
                     <td className="px-6 py-3 text-right space-x-2">
+                      <a
+                        href={getReportDownloadUrl(row.reference_id)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-slate-100 inline-flex items-center"
+                        title="Download PDF Audit Report"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                      </a>
                       <Link
                         to={`/results/${row.reference_id}`}
                         className="inline-flex items-center gap-1 text-slate-600 hover:text-[#2563EB] font-medium"

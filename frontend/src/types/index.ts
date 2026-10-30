@@ -74,6 +74,10 @@ export interface VerificationResult {
   suggested_type?: string | null;
   suggested_type_name?: string | null;
   detected_category?: string;
+  user_id?: number | null;
+  source_document_id?: number | null;
+  is_duplicate?: boolean;
+  duplicate_of_reference_id?: string | null;
 }
 
 export interface FieldComparison {
@@ -106,6 +110,9 @@ export interface HistoryItem {
   created_at: string;
   file_size: number;
   failed_checks_count: number;
+  user_id?: number | null;
+  source_document_id?: number | null;
+  is_duplicate?: boolean;
 }
 
 export interface DashboardStats {
@@ -131,4 +138,83 @@ export interface DemoSample {
   expected_result: string;
   fixture_file: string;
   description: string;
+}
+
+export interface User {
+  id: number;
+  email: string;
+  full_name: string;
+  is_active: boolean;
+  created_at: string;
+  total_verifications?: number;
+  total_my_docs?: number;
+}
+
+export interface AuthResponse {
+  access_token: string;
+  token_type: string;
+  user: User;
+}
+
+export interface UserDocumentItem {
+  id: number;
+  user_id: number;
+  original_filename: string;
+  stored_filename?: string;
+  filename?: string;
+  file_size: number;
+  mime_type: string;
+  file_hash: string;
+  category: string;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+  latest_verification_id?: string | null;
+  latest_verification_status?: string | null;
+  last_verified_at?: string | null;
+  last_verification_status?: string | null;
+  last_verification_ref_id?: string | null;
+}
+
+export interface UserDocumentListResponse {
+  documents?: UserDocumentItem[];
+  items?: UserDocumentItem[];
+  total: number;
+  total_size_bytes?: number;
+}
+
+export interface DuplicateCheckResponse {
+  is_duplicate: boolean;
+  file_hash: string;
+  matched_type?: 'MY_DOC' | 'VERIFICATION_HISTORY' | null;
+  existing_reference_id?: string | null;
+  existing_document_id?: number | null;
+  existing_filename?: string | null;
+  existing_created_at?: string | null;
+  existing_status?: string | null;
+}
+
+export interface ActivityTrendItem {
+  month: string;
+  count: number;
+}
+
+export interface PersonalAnalyticsResponse {
+  total_verifications: number;
+  verified_count: number;
+  invalid_count: number;
+  review_count: number;
+  unable_count: number;
+  pass_rate_percent: number;
+  status_distribution: {
+    verified: number;
+    invalid: number;
+    requires_review: number;
+    unable_to_verify: number;
+  };
+  category_distribution: Record<string, number>;
+  monthly_trend: ActivityTrendItem[];
+  total_stored_docs: number;
+  total_storage_bytes: number;
+  duplicate_detections_count: number;
 }

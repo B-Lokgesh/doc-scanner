@@ -20,10 +20,11 @@ else:
 UPLOAD_DIR = STORAGE_DIR / "uploads"
 REPORT_DIR = STORAGE_DIR / "reports"
 PREVIEW_DIR = STORAGE_DIR / "previews"
+MY_DOC_DIR = STORAGE_DIR / "my_docs"
 FIXTURES_DIR = BASE_DIR / "test_fixtures"
 
 # Ensure directories exist safely without throwing on read-only filesystems
-for folder in [STORAGE_DIR, UPLOAD_DIR, REPORT_DIR, PREVIEW_DIR]:
+for folder in [STORAGE_DIR, UPLOAD_DIR, REPORT_DIR, PREVIEW_DIR, MY_DOC_DIR]:
     try:
         folder.mkdir(parents=True, exist_ok=True)
     except Exception:
@@ -33,6 +34,8 @@ class Settings:
     PROJECT_NAME: str = "VeriDoc AI"
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api"
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "veridoc-ai-super-secret-key-2026-production")
+    ACCESS_TOKEN_EXPIRE_DAYS: int = 7
     MAX_FILE_SIZE_BYTES: int = int(os.getenv("MAX_FILE_SIZE_BYTES", str(10 * 1024 * 1024))) # 10MB default
     ALLOWED_EXTENSIONS: set = {".pdf", ".jpg", ".jpeg", ".png"}
     ALLOWED_MIME_TYPES: set = {

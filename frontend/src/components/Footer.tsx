@@ -57,8 +57,8 @@ export const Footer: React.FC = () => {
                 </Link>
               </li>
               <li>
-                <Link to="/history" className="hover:text-[#2563EB] transition-colors">
-                  Audit History
+                <Link to="/my-doc" className="hover:text-[#2563EB] transition-colors">
+                  My_Doc Vault
                 </Link>
               </li>
             </ul>

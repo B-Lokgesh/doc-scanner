@@ -25,11 +25,14 @@ class VerificationService:
         original_filename: str,
         declared_mime: str,
         selected_type: str,
-        saved_file_path: str
+        saved_file_path: str,
+        user_id: Optional[int] = None,
+        source_document_id: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         Executes the full 8-stage verification pipeline.
         Saves all records, events, checks, and extracted fields to the database.
+        Optionally associates record with user_id and source_document_id.
         Returns the structured verification result.
         """
         ref_id = cls.generate_reference_id()
@@ -40,6 +43,21 @@ class VerificationService:
         all_checks: List[Dict[str, Any]] = []
         events: List[Dict[str, Any]] = []
         extracted_fields: List[Dict[str, Any]] = []
+
+        # Check duplicate hash within user scope or system
+        is_duplicate = False
+        duplicate_of_reference_id = None
+        if user_id:
+            try:
+                with db_session() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT reference_id FROM verification_records WHERE file_hash = ? AND user_id = ? LIMIT 1", (file_hash, user_id))
+                    dup_row = cursor.fetchone()
+                    if dup_row:
+                        is_duplicate = True
+                        duplicate_of_reference_id = dup_row[0]
+            except Exception:
+                pass
 
         # Helper to log event
         def add_event(stage: str, status: str, msg: str):
@@ -76,7 +94,11 @@ class VerificationService:
                 created_at=created_at,
                 checks=all_checks,
                 fields=[],
-                events=events
+                events=events,
+                user_id=user_id,
+                source_document_id=source_document_id,
+                is_duplicate=is_duplicate,
+                duplicate_of_reference_id=duplicate_of_reference_id
             )
 
         add_event("file_integrity_check", "COMPLETED", "File passed integrity and structure validation.")
@@ -110,7 +132,11 @@ class VerificationService:
                 created_at=created_at,
                 checks=all_checks,
                 fields=[],
-                events=events
+                events=events,
+                user_id=user_id,
+                source_document_id=source_document_id,
+                is_duplicate=is_duplicate,
+                duplicate_of_reference_id=duplicate_of_reference_id
             )
 
         all_checks.append({
@@ -193,7 +219,11 @@ class VerificationService:
             events=events,
             suggested_type=class_res.get("suggested_type"),
             suggested_type_name=class_res.get("suggested_type_name"),
-            detected_category=class_res.get("detected_category", "")
+            detected_category=class_res.get("detected_category", ""),
+            user_id=user_id,
+            source_document_id=source_document_id,
+            is_duplicate=is_duplicate,
+            duplicate_of_reference_id=duplicate_of_reference_id
         )
 
     @classmethod
@@ -215,7 +245,11 @@ class VerificationService:
         events: List[Dict[str, Any]],
         suggested_type: Optional[str] = None,
         suggested_type_name: Optional[str] = None,
-        detected_category: str = ""
+        detected_category: str = "",
+        user_id: Optional[int] = None,
+        source_document_id: Optional[int] = None,
+        is_duplicate: bool = False,
+        duplicate_of_reference_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Persists verification record, checks, extracted fields, and processing events into SQLite.
@@ -229,12 +263,12 @@ class VerificationService:
                 INSERT INTO verification_records (
                     reference_id, document_type, original_filename, file_hash, file_path,
                     file_size, mime_type, processing_status, final_status, summary,
-                    error_code, created_at, completed_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    error_code, user_id, source_document_id, created_at, completed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     ref_id, doc_type, filename, file_hash, file_path,
                     file_size, mime_type, "completed", final_status, summary,
-                    error_code, created_at.isoformat(), completed_at.isoformat()
+                    error_code, user_id, source_document_id, created_at.isoformat(), completed_at.isoformat()
                 ))
                 ver_id = cursor.lastrowid
 
@@ -311,5 +345,9 @@ class VerificationService:
             "recommended_next_steps": recommendations,
             "suggested_type": suggested_type,
             "suggested_type_name": suggested_type_name,
-            "detected_category": detected_category
+            "detected_category": detected_category,
+            "user_id": user_id,
+            "source_document_id": source_document_id,
+            "is_duplicate": is_duplicate,
+            "duplicate_of_reference_id": duplicate_of_reference_id
         }
