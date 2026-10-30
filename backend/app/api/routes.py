@@ -704,11 +704,12 @@ async def cross_verify_supporting_document(
             with db_session() as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    "SELECT id, reference_id, document_type, original_filename, summary, final_status FROM verification_records WHERE reference_id = ?",
+                    "SELECT id, reference_id, document_type, original_filename, summary, final_status, file_path FROM verification_records WHERE reference_id = ?",
                     (reference_id,)
                 )
                 primary_rec = cursor.fetchone()
                 if primary_rec:
+                    primary_rec = dict(primary_rec)
                     cursor.execute(
                         "SELECT field_name, normalized_value, raw_value FROM extracted_fields WHERE verification_id = ?",
                         (primary_rec["id"],)
@@ -790,9 +791,32 @@ async def cross_verify_supporting_document(
     except Exception:
         pass
 
+    # Deep OCR on supporting document bytes for cross-comparison reconciliation
+    s_ocr_text = ""
+    try:
+        s_fmt = file_ext.replace(".", "").lower() if file_ext else "pdf"
+        s_ocr = OCRService.process_document_text(file_bytes, s_fmt)
+        s_ocr_text = s_ocr.get("text", "")
+    except Exception:
+        pass
+
+    # OCR / digital text from primary document if available on disk
+    p_file_text = ""
+    if primary_rec and primary_rec.get("file_path"):
+        try:
+            pf_path = Path(primary_rec["file_path"])
+            if pf_path.exists():
+                p_file_bytes = pf_path.read_bytes()
+                p_fmt = primary_rec.get("document_type", "pdf")
+                p_ocr = OCRService.process_document_text(p_file_bytes, p_fmt)
+                p_file_text = p_ocr.get("text", "")
+        except Exception:
+            pass
+
     combined_supporting_text = (
         (result.get("summary") or "") + " " +
         filename + " " +
+        s_ocr_text + " " +
         " ".join(raw_ascii_strings) + " " +
         " ".join(str(f.get("raw_value", "")) for f in result.get("extracted_fields", []))
     ).upper()
@@ -800,6 +824,7 @@ async def cross_verify_supporting_document(
     combined_primary_text = (
         (primary_rec["original_filename"] if primary_rec else "") + " " +
         (primary_rec["summary"] if primary_rec else "") + " " +
+        p_file_text + " " +
         " ".join(primary_map.values())
     ).upper()
 
@@ -846,7 +871,7 @@ async def cross_verify_supporting_document(
         if dob_digits and dob_digits[0] in combined_primary_text:
             primary_map["date_of_birth"] = s_dob_val
 
-    # Look for primary Father Name in supporting document text/bytes
+    # Look for Father Name reconciliation across documents
     p_father_val = next((primary_map[k] for k in ["father_name", "parent_name", "relation_name"] if k in primary_map), "")
     s_father_val = next((supporting_map[k] for k in ["father_name", "parent_name", "relation_name"] if k in supporting_map), "")
 
@@ -862,12 +887,18 @@ async def cross_verify_supporting_document(
                     "extraction_confidence": 0.85,
                     "is_sensitive": False
                 })
+    elif s_father_val and not p_father_val:
+        f_tokens = [t for t in s_father_val.split() if len(t) >= 3]
+        if any(t in combined_primary_text for t in f_tokens):
+            primary_map["father_name"] = s_father_val
 
     # Look for Pin Code in supporting text/bytes
     p_pin_val = primary_map.get("pin_code", "")
     s_pin_val = supporting_map.get("pin_code", "")
     if p_pin_val and not s_pin_val and p_pin_val in combined_supporting_text:
         supporting_map["pin_code"] = p_pin_val
+    elif s_pin_val and not p_pin_val and s_pin_val in combined_primary_text:
+        primary_map["pin_code"] = s_pin_val
 
     # If supporting document had UNABLE TO VERIFY on Vercel but fields were extracted/matched
     if result.get("final_status") in ["UNABLE TO VERIFY", "REQUIRES MANUAL REVIEW"] and result.get("extracted_fields"):
@@ -935,6 +966,9 @@ async def cross_verify_supporting_document(
                             if len(common_tokens) >= 1:
                                 is_match = True
                             elif any(pt.startswith(st[:3]) or st.startswith(pt[:3]) for pt in p_tokens for st in s_tokens if len(pt)>=3 and len(st)>=3):
+                                is_match = True
+                        if not is_match:
+                            if (s_clean and s_clean in combined_primary_text) or (p_clean and p_clean in combined_supporting_text):
                                 is_match = True
                 elif target["id"] == "dob":
                     dt_p = FieldExtractor.parse_date(pval)

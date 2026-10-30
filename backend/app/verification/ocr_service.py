@@ -19,6 +19,12 @@ except Exception:
     cv2 = None
 
 try:
+    from rapidocr_onnxruntime import RapidOCR
+    _rapid_ocr = RapidOCR()
+except Exception:
+    _rapid_ocr = None
+
+try:
     import winocr
     import asyncio
 except Exception:
@@ -127,8 +133,22 @@ class OCRService:
                 "is_unreadable": True
             }
 
+        # 0. Try RapidOCR (Universal ONNX engine, runs natively on Linux/Vercel/Windows/Mac)
+        if _rapid_ocr is not None:
+            try:
+                r_res, _ = _rapid_ocr(file_bytes)
+                if r_res:
+                    r_lines = [item[1] for item in r_res if item and len(item) >= 2]
+                    r_txt = "\n".join(r_lines).strip()
+                    if len(r_txt) >= 10:
+                        full_text = r_txt
+                        engine_used = "rapid_ocr_onnx"
+                        confidence = 0.96
+            except Exception:
+                pass
+
         # 1. Try Windows Media OCR (Fast, accurate, built-in)
-        if winocr is not None:
+        if not full_text and winocr is not None:
             text_out = cls._run_winocr_sync(pil_img)
             if len(text_out.strip()) >= 10:
                 full_text = text_out.strip()

@@ -352,6 +352,7 @@ def test_54_cross_verify_matching_aadhaar_and_pan():
     assert data["overall_identity_match"] is True
     assert data["matched_fields"] >= 2
 
+
 def test_55_cross_verify_db_fallback_without_frontend_fields():
     with open(FIXTURES_DIR / "valid_pan.pdf", "rb") as f:
         pan_bytes = f.read()
@@ -379,5 +380,44 @@ def test_55_cross_verify_db_fallback_without_frontend_fields():
     assert data["cross_verify_status"] == "IDENTITY_CONFIRMED"
     assert data["overall_identity_match"] is True
     assert data["matched_fields"] >= 2
+
+def test_56_cross_verify_aadhaar_with_driving_licence():
+    import io
+    import json
+    primary_aadhaar_fields = [
+        {"field_name": "holder_name", "normalized_value": "Lokgesh B", "raw_value": "LokgeshB"},
+        {"field_name": "date_of_birth", "normalized_value": "16/08/2006", "raw_value": "16/08/2006"},
+        {"field_name": "father_name", "normalized_value": "Baskaran", "raw_value": "Baskaran"},
+        {"field_name": "pin_code", "normalized_value": "624712", "raw_value": "624712"}
+    ]
+
+    # Driving licence mock with image/scanned stream
+    from reportlab.lib.pagesizes import letter
+    from reportlab.pdfgen import canvas
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=letter)
+    c.drawString(100, 700, "Indian Union Driving Licence")
+    c.drawString(100, 680, "TN94Z20250000206")
+    c.drawString(100, 660, "Name: LOKGESH B")
+    c.drawString(100, 640, "Date of Birth: 16-08-2006")
+    c.drawString(100, 620, "Son of: BASKARAN")
+    c.drawString(100, 600, "NO 172-3 WEST STREET Markkampatti Tamil Nadu 624712")
+    c.save()
+    dl_pdf_bytes = buf.getvalue()
+
+    resp = client.post(
+        "/api/verifications/VD-TEST-DL-CROSS/cross-verify",
+        data={
+            "document_type": "driving_licence",
+            "primary_fields_json": json.dumps(primary_aadhaar_fields)
+        },
+        files={"file": ("driving_licence.pdf", dl_pdf_bytes, "application/pdf")}
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["cross_verify_status"] == "IDENTITY_CONFIRMED"
+    assert data["overall_identity_match"] is True
+    assert data["matched_fields"] >= 3
+
 
 

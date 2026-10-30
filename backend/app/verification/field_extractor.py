@@ -147,10 +147,14 @@ class FieldExtractor:
             if name_match:
                 val = name_match.group(1).strip()
                 if not any(k in val.lower() for k in ["government", "unique", "authority", "india", "enrolment"]):
+                    # If name is written with glued trailing uppercase initial (e.g. LokgeshB -> Lokgesh B)
+                    if re.match(r"^[A-Za-z]+[A-Z]$", val) and len(val) >= 4 and val[-2].islower():
+                        val = val[:-1] + " " + val[-1]
+                    norm_val = f"{val[:-2].title()} {val[-1].upper()}" if val.endswith(f" {val[-1]}") else val.title()
                     fields.append({
                         "field_name": "holder_name",
                         "raw_value": val,
-                        "normalized_value": val.title(),
+                        "normalized_value": norm_val,
                         "extraction_confidence": 0.90,
                         "is_sensitive": False
                     })
@@ -722,20 +726,32 @@ class FieldExtractor:
                 field_names.add("date_of_birth")
 
         if "father_name" not in field_names:
-            gen_father = re.search(r"(?:Father(?:'s)?\s*Name|S/O|D/O|W/O|Son\s*of|Daughter\s*of|Wife\s*of|Parent\s*Name)[\s:\-]+([A-Za-z\s\.]{2,35})(?=\n|$)", text, re.IGNORECASE)
-            if gen_father:
-                v = gen_father.group(1).strip()
-                fields.append({
-                    "field_name": "father_name",
-                    "raw_value": v,
-                    "normalized_value": v.title(),
-                    "extraction_confidence": 0.85,
-                    "is_sensitive": False
-                })
-                field_names.add("father_name")
+            gen_father_matches = list(re.finditer(
+                r"(?:Father(?:'s)?\s*Name|S[/I1\\|\-\s]+O|D[/I1\\|\-\s]+O|W[/I1\\|\-\s]+O|Son\s*of|Daughter\s*of|Wife\s*of|Parent\s*Name|C[/I1\\|\-\s]+O)[\s:\-]+([A-Za-z\s\.]{2,35})(?=\s*(?:,|\n|NO|\d|$))",
+                text,
+                re.IGNORECASE
+            ))
+            if gen_father_matches:
+                valid_candidates = []
+                for gm in gen_father_matches:
+                    cand = gm.group(1).strip()
+                    if not any(k in cand.lower() for k in ["government", "authority", "department", "unique", "india"]):
+                        valid_candidates.append(cand)
+                
+                if valid_candidates:
+                    # Prefer proper capitalized candidate over all-lowercase OCR artifacts
+                    chosen = next((c for c in valid_candidates if c[0].isupper() and not c.islower()), valid_candidates[0])
+                    fields.append({
+                        "field_name": "father_name",
+                        "raw_value": chosen,
+                        "normalized_value": chosen.title(),
+                        "extraction_confidence": 0.85,
+                        "is_sensitive": False
+                    })
+                    field_names.add("father_name")
 
         if "pin_code" not in field_names:
-            pin_m = re.search(r"\b([1-9][0-9]{5})\b", text)
+            pin_m = re.search(r"(?:\b|\D)([1-9][0-9]{5})(?:\D|$)", text)
             if pin_m:
                 fields.append({
                     "field_name": "pin_code",
